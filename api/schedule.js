@@ -102,10 +102,10 @@ const LESSON_TIMES = {
     1: '09:00-10:30',
     2: '10:40-12:10',
     3: '12:20-13:50',
-    4: '14:00-15:30',
-    5: '15:40-17:10',
-    6: '17:20-18:50',
-    7: '19:00-20:30',
+    4: '14:30-16:00',
+    5: '16:10-17:40',
+    6: '17:50-19:20',
+    7: '19:30-21:00',
 };
 
 /**
@@ -164,6 +164,23 @@ export const parseSchedule = (rawSchedule) => {
                     return; // Пропускаем невалидные данные
                 }
 
+                // Проверяем актуальность модуля по датам
+                if (lesson.df && lesson.dt) {
+                    const now = new Date();
+                    const dateFrom = new Date(lesson.df);
+                    const dateTo = new Date(lesson.dt);
+
+                    // Если модуль уже закончился, пропускаем
+                    if (now > dateTo) {
+                        return;
+                    }
+
+                    // Если модуль еще не начался, также можно пропустить (опционально)
+                    // if (now < dateFrom) {
+                    //     return;
+                    // }
+                }
+
                 // Извлекаем аудиторию из массива auditories или shortRooms
                 let room = 'Аудитория не указана';
                 if (lesson.shortRooms && lesson.shortRooms.length > 0) {
@@ -190,6 +207,9 @@ export const parseSchedule = (rawSchedule) => {
                     room: room,
                     professor: teacher,
                     lessonNumber: parseInt(lessonNumber, 10), // Для сортировки
+                    // Сохраняем даты модуля для справки
+                    dateFrom: lesson.df || null,
+                    dateTo: lesson.dt || null,
                 };
 
                 allLessonsForDay.push(parsedLesson);
