@@ -10,7 +10,7 @@
 
 // Для тестирования используется демо-ключ
 // В продакшене замените на свой ключ из настроек
-const API_KEY = 'YOUR_API_KEY_HERE'; // Замените на реальный ключ
+const API_KEY = 'a1d630b7c5a9f87466a69d5038dadb96'; // Замените на реальный ключ
 const BASE_URL = 'https://api.openweathermap.org/data/2.5';
 
 /**

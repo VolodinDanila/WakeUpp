@@ -8,7 +8,7 @@
  * 3. Добавьте ключ в настройки
  */
 
-const YANDEX_API_KEY = 'YOUR_YANDEX_API_KEY'; // Замените на реальный ключ
+const YANDEX_API_KEY = '5e15c7e1-aac6-455d-a0b0-37d9e76231b9'; // Замените на реальный ключ
 const GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/';
 
 /**
@@ -292,5 +292,5 @@ export const getMockRouteData = () => {
  * Проверка, настроен ли API ключ
  */
 export const isRoutesApiConfigured = () => {
-    return YANDEX_API_KEY && YANDEX_API_KEY !== 'YOUR_YANDEX_API_KEY';
+    return YANDEX_API_KEY && YANDEX_API_KEY !== '5e15c7e1-aac6-455d-a0b0-37d9e76231b9';
 };
