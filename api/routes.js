@@ -71,29 +71,86 @@ export const geocodeAddress = async (address) => {
  */
 export const buildRoute = async (from, to, mode = 'transit') => {
     try {
+        console.log('🗺️ ============ ПОСТРОЕНИЕ МАРШРУТА ============');
+        console.log(`📍 Откуда: ${typeof from === 'string' ? from : JSON.stringify(from)}`);
+        console.log(`📍 Куда: ${typeof to === 'string' ? to : JSON.stringify(to)}`);
+        console.log(`🚌 Режим транспорта: ${mode}`);
+
         // Если переданы адреса, геокодируем их
         let fromCoords = from;
         let toCoords = to;
+        let fromAddress = typeof from === 'string' ? from : 'Начальная точка';
+        let toAddress = typeof to === 'string' ? to : 'Конечная точка';
 
         if (typeof from === 'string') {
+            console.log(`🔍 Геокодирую начальный адрес: ${from}`);
             const geocoded = await geocodeAddress(from);
             fromCoords = { lat: geocoded.lat, lon: geocoded.lon };
+            fromAddress = geocoded.fullAddress || from;
+            console.log(`✅ Начальные координаты: lat=${geocoded.lat}, lon=${geocoded.lon}`);
+            console.log(`📝 Полный адрес: ${fromAddress}`);
         }
 
         if (typeof to === 'string') {
+            console.log(`🔍 Геокодирую конечный адрес: ${to}`);
             const geocoded = await geocodeAddress(to);
             toCoords = { lat: geocoded.lat, lon: geocoded.lon };
+            toAddress = geocoded.fullAddress || to;
+            console.log(`✅ Конечные координаты: lat=${geocoded.lat}, lon=${geocoded.lon}`);
+            console.log(`📝 Полный адрес: ${toAddress}`);
         }
+
+        // Генерируем ссылку на Яндекс.Карты
+        const mapUrl = generateYandexMapUrl(fromCoords, toCoords, mode);
+        console.log('🔗 Ссылка на маршрут в Яндекс.Картах:');
+        console.log(mapUrl);
 
         // Для маршрутов общественного транспорта используем Yandex Router API
         // Примечание: для полноценной работы нужен API ключ
+        console.log('📊 Рассчитываю параметры маршрута...');
         const routeData = await calculateRoute(fromCoords, toCoords, mode);
+
+        // Добавляем ссылку на карты
+        routeData.mapUrl = mapUrl;
+        routeData.fromAddress = fromAddress;
+        routeData.toAddress = toAddress;
+
+        console.log('✅ Маршрут построен:');
+        console.log(`   Расстояние: ${routeData.distance} км`);
+        console.log(`   Время в пути: ${routeData.duration} мин`);
+        console.log(`   Шагов: ${routeData.steps.length}`);
+        console.log('🗺️ =========================================');
 
         return routeData;
     } catch (error) {
-        console.error('Ошибка построения маршрута:', error);
+        console.error('❌ Ошибка построения маршрута:', error);
+        console.error('   Тип ошибки:', error.name);
+        console.error('   Сообщение:', error.message);
+        console.error('🗺️ =========================================');
         throw new Error('Не удалось построить маршрут');
     }
+};
+
+/**
+ * Генерация ссылки на маршрут в Яндекс.Картах
+ * @param {Object} from - Координаты начала { lat, lon }
+ * @param {Object} to - Координаты конца { lat, lon }
+ * @param {string} mode - Режим транспорта
+ * @returns {string} URL на Яндекс.Карты
+ */
+const generateYandexMapUrl = (from, to, mode) => {
+    // Формат URL: https://yandex.ru/maps/?rtext=lat1,lon1~lat2,lon2&rtt=mode
+    // rtt: auto (авто), mt (общественный транспорт), pd (пешком)
+    const modeMap = {
+        auto: 'auto',
+        transit: 'mt',
+        pedestrian: 'pd',
+    };
+
+    const rtt = modeMap[mode] || 'mt';
+    const url = `https://yandex.ru/maps/?rtext=${from.lat},${from.lon}~${to.lat},${to.lon}&rtt=${rtt}`;
+
+    return url;
 };
 
 /**
@@ -107,8 +164,12 @@ const calculateRoute = async (from, to, mode) => {
     // Примечание: это упрощенная версия
     // Для реальной работы нужно использовать Yandex Router API или Directions API
 
+    console.log('   📐 Расчет по формуле Haversine (расстояние по прямой)...');
+    console.log(`   Координаты: (${from.lat}, ${from.lon}) → (${to.lat}, ${to.lon})`);
+
     // Рассчитываем примерное расстояние по прямой (формула Haversine)
     const distance = calculateDistance(from.lat, from.lon, to.lat, to.lon);
+    console.log(`   📏 Расстояние по прямой: ${distance.toFixed(2)} км`);
 
     // Примерная скорость в зависимости от типа транспорта (км/ч)
     const speeds = {
@@ -120,13 +181,19 @@ const calculateRoute = async (from, to, mode) => {
     const speed = speeds[mode] || speeds.transit;
     const duration = Math.round((distance / speed) * 60); // В минутах
 
+    console.log(`   🚌 Скорость для режима "${mode}": ${speed} км/ч`);
+    console.log(`   ⏱️ Расчетное время в пути: ${duration} мин`);
+
+    const steps = generateMockSteps(mode, distance, duration);
+    console.log(`   📝 Создано шагов маршрута: ${steps.length}`);
+
     return {
         distance: distance.toFixed(1),
         duration: duration,
         mode: mode,
         departureTime: null,
         arrivalTime: null,
-        steps: generateMockSteps(mode, distance, duration),
+        steps: steps,
     };
 };
 

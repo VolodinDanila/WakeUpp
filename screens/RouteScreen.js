@@ -19,6 +19,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { loadSettings, saveRouteData, loadRouteData as loadCachedRoute } from '../utils/storage';
 import {
@@ -119,6 +120,23 @@ export default function RouteScreen() {
       // Добавляем адреса для отображения
       routeResult.fromAddress = settings.homeAddress;
       routeResult.toAddress = settings.universityAddress;
+
+      console.log('📊 Итоговые данные маршрута:');
+      console.log('   Адреса:', {
+        from: routeResult.fromAddress,
+        to: routeResult.toAddress
+      });
+      console.log('   Время:', {
+        departure: routeResult.departureTime,
+        arrival: routeResult.arrivalTime,
+        duration: routeResult.duration + ' мин'
+      });
+      console.log('   Расстояние:', routeResult.distance + ' км');
+      console.log('   Режим:', routeResult.mode);
+      console.log('   Пробки:', traffic);
+      if (routeResult.mapUrl) {
+        console.log('   Ссылка на карты:', routeResult.mapUrl);
+      }
 
       setRouteData(routeResult);
       setTrafficLevel(traffic.level);
@@ -332,18 +350,31 @@ export default function RouteScreen() {
         </View>
       </View>
 
+      {/* Кнопка открытия в Яндекс.Картах */}
+      {routeData.mapUrl && (
+        <TouchableOpacity
+          style={styles.mapButton}
+          onPress={() => {
+            console.log('🗺️ Открываю маршрут в Яндекс.Картах:', routeData.mapUrl);
+            Linking.openURL(routeData.mapUrl);
+          }}
+        >
+          <Text style={styles.mapButtonText}>🗺️ Открыть маршрут в Яндекс.Картах</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Кнопка обновления маршрута */}
       <TouchableOpacity
         style={styles.updateButton}
         onPress={() => loadRouteData()}
       >
-        <Text style={styles.updateButtonText}>Обновить маршрут</Text>
+        <Text style={styles.updateButtonText}>🔄 Обновить маршрут</Text>
       </TouchableOpacity>
 
       {/* Информационный блок */}
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>
-          💡 Маршрут обновляется автоматически с учетом текущей дорожной ситуации
+          💡 Маршрут рассчитан по прямой. Для точного маршрута откройте Яндекс.Карты
         </Text>
       </View>
     </ScrollView>
@@ -612,6 +643,25 @@ const styles = StyleSheet.create({
   routeBadgeText: {
     fontSize: 11,
     color: '#fff',
+    fontWeight: '600',
+  },
+  // Кнопка открытия карт
+  mapButton: {
+    backgroundColor: '#007AFF',
+    marginHorizontal: 15,
+    marginBottom: 10,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mapButtonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
   // Кнопка обновления
