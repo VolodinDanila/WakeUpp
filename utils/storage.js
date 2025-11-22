@@ -10,6 +10,7 @@ const KEYS = {
     SETTINGS: 'app_settings',
     SCHEDULE: 'cached_schedule',
     LAST_ROUTE: 'last_route_data',
+    REMINDERS: 'app_reminders',
 };
 
 /**
@@ -137,6 +138,105 @@ export const clearAllData = async () => {
         return true;
     } catch (error) {
         console.error('❌ Ошибка очистки данных:', error);
+        return false;
+    }
+};
+
+/**
+ * Загрузка всех напоминаний
+ * @returns {Promise<Array>} Массив напоминаний
+ */
+export const loadReminders = async () => {
+    try {
+        const data = await AsyncStorage.getItem(KEYS.REMINDERS);
+        if (data) {
+            const reminders = JSON.parse(data);
+            console.log(`✅ Загружено напоминаний: ${reminders.length}`);
+            return reminders;
+        }
+        return [];
+    } catch (error) {
+        console.error('❌ Ошибка загрузки напоминаний:', error);
+        return [];
+    }
+};
+
+/**
+ * Сохранение всех напоминаний
+ * @param {Array} reminders - Массив напоминаний
+ */
+export const saveReminders = async (reminders) => {
+    try {
+        await AsyncStorage.setItem(KEYS.REMINDERS, JSON.stringify(reminders));
+        console.log(`✅ Сохранено напоминаний: ${reminders.length}`);
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка сохранения напоминаний:', error);
+        return false;
+    }
+};
+
+/**
+ * Добавление нового напоминания
+ * @param {Object} reminder - Данные напоминания
+ */
+export const addReminder = async (reminder) => {
+    try {
+        const reminders = await loadReminders();
+        const newReminder = {
+            ...reminder,
+            id: Date.now().toString(),
+            createdAt: new Date().toISOString(),
+        };
+        reminders.push(newReminder);
+        await saveReminders(reminders);
+        console.log('✅ Напоминание добавлено:', newReminder.title);
+        return newReminder;
+    } catch (error) {
+        console.error('❌ Ошибка добавления напоминания:', error);
+        return null;
+    }
+};
+
+/**
+ * Обновление напоминания
+ * @param {string} id - ID напоминания
+ * @param {Object} updates - Обновленные данные
+ */
+export const updateReminder = async (id, updates) => {
+    try {
+        const reminders = await loadReminders();
+        const index = reminders.findIndex(r => r.id === id);
+        if (index !== -1) {
+            reminders[index] = {
+                ...reminders[index],
+                ...updates,
+                updatedAt: new Date().toISOString(),
+            };
+            await saveReminders(reminders);
+            console.log('✅ Напоминание обновлено:', reminders[index].title);
+            return reminders[index];
+        }
+        return null;
+    } catch (error) {
+        console.error('❌ Ошибка обновления напоминания:', error);
+        return null;
+    }
+};
+
+/**
+ * Удаление напоминания
+ * @param {string} id - ID напоминания
+ */
+export const deleteReminder = async (id) => {
+    try {
+        const reminders = await loadReminders();
+        const filtered = reminders.filter(r => r.id !== id);
+        await saveReminders(filtered);
+        console.log('✅ Напоминание удалено');
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка удаления напоминания:', error);
         return false;
     }
 };
