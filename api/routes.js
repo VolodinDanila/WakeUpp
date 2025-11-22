@@ -12,6 +12,7 @@
 // Получите ключ на https://developer.tech.yandex.ru/
 const YANDEX_API_KEY = 'YOUR_YANDEX_API_KEY';
 const GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/';
+const ROUTER_URL = 'https://api.routing.yandex.net/v2/route';
 
 /**
  * Геокодирование - преобразование адреса в координаты
@@ -154,46 +155,189 @@ const generateYandexMapUrl = (from, to, mode) => {
 };
 
 /**
- * Расчет маршрута (упрощенная версия)
+ * Расчет маршрута (пробуем реальный API, если не получается - упрощенный расчет)
  * @param {Object} from - Координаты начала
  * @param {Object} to - Координаты конца
  * @param {string} mode - Режим транспорта
  * @returns {Promise<Object>} Данные маршрута
  */
 const calculateRoute = async (from, to, mode) => {
-    // Примечание: это упрощенная версия
-    // Для реальной работы нужно использовать Yandex Router API или Directions API
+    // Сначала пробуем реальный Yandex Router API
+    if (YANDEX_API_KEY && YANDEX_API_KEY !== 'YOUR_YANDEX_API_KEY') {
+        try {
+            console.log('   🚀 Пробую использовать Yandex Router API...');
+            const realRoute = await fetchRealRoute(from, to, mode);
+            console.log('   ✅ Получен реальный маршрут от Yandex Router API');
+            return realRoute;
+        } catch (error) {
+            console.log('   ⚠️ Yandex Router API недоступен:', error.message);
+            console.log('   📐 Переключаюсь на улучшенный расчет...');
+        }
+    } else {
+        console.log('   ⚠️ API ключ не настроен, используется расчет по дорогам');
+    }
 
-    console.log('   📐 Расчет по формуле Haversine (расстояние по прямой)...');
-    console.log(`   Координаты: (${from.lat}, ${from.lon}) → (${to.lat}, ${to.lon})`);
+    // Если API не сработал, используем улучшенный расчет
+    return calculateImprovedRoute(from, to, mode);
+};
 
-    // Рассчитываем примерное расстояние по прямой (формула Haversine)
-    const distance = calculateDistance(from.lat, from.lon, to.lat, to.lon);
-    console.log(`   📏 Расстояние по прямой: ${distance.toFixed(2)} км`);
+/**
+ * Запрос к реальному Yandex Router API
+ * @param {Object} from - Координаты начала
+ * @param {Object} to - Координаты конца
+ * @param {string} mode - Режим транспорта
+ * @returns {Promise<Object>} Данные маршрута
+ */
+const fetchRealRoute = async (from, to, mode) => {
+    // Yandex Router API использует формат: lon,lat (не lat,lon!)
+    const waypoints = `${from.lon},${from.lat}|${to.lon},${to.lat}`;
 
-    // Примерная скорость в зависимости от типа транспорта (км/ч)
-    const speeds = {
-        auto: 40,        // Автомобиль с учетом пробок
-        transit: 25,     // Общественный транспорт
-        pedestrian: 5,   // Пешком
+    // Маппинг режимов для Yandex API
+    const modeMap = {
+        auto: 'driving',
+        transit: 'transit',
+        pedestrian: 'walking',
     };
+    const yandexMode = modeMap[mode] || 'transit';
 
-    const speed = speeds[mode] || speeds.transit;
-    const duration = Math.round((distance / speed) * 60); // В минутах
+    const url = `${ROUTER_URL}?apikey=${YANDEX_API_KEY}&waypoints=${waypoints}&mode=${yandexMode}`;
 
-    console.log(`   🚌 Скорость для режима "${mode}": ${speed} км/ч`);
-    console.log(`   ⏱️ Расчетное время в пути: ${duration} мин`);
+    console.log(`   🔗 Запрос: ${yandexMode} маршрут`);
 
-    const steps = generateMockSteps(mode, distance, duration);
-    console.log(`   📝 Создано шагов маршрута: ${steps.length}`);
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.route || !data.route.legs || data.route.legs.length === 0) {
+        throw new Error('Нет данных о маршруте в ответе API');
+    }
+
+    // Парсим первый (самый быстрый) маршрут
+    const route = data.route;
+    const distance = (route.distance / 1000).toFixed(1); // метры → км
+    const duration = Math.round(route.duration / 60); // секунды → минуты
+
+    console.log(`   📏 Расстояние по дорогам: ${distance} км`);
+    console.log(`   ⏱️ Время в пути: ${duration} мин`);
+
+    // Парсим шаги маршрута
+    const steps = parseRouteSteps(route.legs, mode);
+    console.log(`   📝 Шагов маршрута: ${steps.length}`);
 
     return {
-        distance: distance.toFixed(1),
+        distance: distance,
         duration: duration,
         mode: mode,
         departureTime: null,
         arrivalTime: null,
         steps: steps,
+        isRealRoute: true, // Флаг что это реальный маршрут
+    };
+};
+
+/**
+ * Парсинг шагов маршрута из ответа Yandex API
+ */
+const parseRouteSteps = (legs, mode) => {
+    const steps = [];
+    let stepId = 1;
+
+    legs.forEach(leg => {
+        if (leg.steps) {
+            leg.steps.forEach(step => {
+                steps.push({
+                    id: String(stepId++),
+                    type: determineStepType(step, mode),
+                    description: step.instruction || 'Продолжайте движение',
+                    duration: Math.round(step.duration / 60), // секунды → минуты
+                    distance: (step.distance / 1000).toFixed(2), // метры → км
+                    routeNumber: step.transit_details?.line?.short_name || null,
+                });
+            });
+        }
+    });
+
+    // Если шагов нет, создаем один обобщенный
+    if (steps.length === 0) {
+        return generateMockSteps(mode, parseFloat(distance), duration);
+    }
+
+    return steps;
+};
+
+/**
+ * Определение типа шага маршрута
+ */
+const determineStepType = (step, defaultMode) => {
+    if (step.travel_mode === 'WALKING') return 'walk';
+    if (step.travel_mode === 'TRANSIT') {
+        const vehicle = step.transit_details?.line?.vehicle?.type;
+        if (vehicle === 'BUS') return 'bus';
+        if (vehicle === 'SUBWAY') return 'metro';
+        return 'bus';
+    }
+    if (step.travel_mode === 'DRIVING') return 'car';
+
+    // Fallback на основе mode
+    if (defaultMode === 'pedestrian') return 'walk';
+    if (defaultMode === 'auto') return 'car';
+    return 'bus';
+};
+
+/**
+ * Улучшенный расчет маршрута (с учетом реальности дорог)
+ * @param {Object} from - Координаты начала
+ * @param {Object} to - Координаты конца
+ * @param {string} mode - Режим транспорта
+ * @returns {Object} Данные маршрута
+ */
+const calculateImprovedRoute = (from, to, mode) => {
+    console.log(`   Координаты: (${from.lat}, ${from.lon}) → (${to.lat}, ${to.lon})`);
+
+    // Рассчитываем расстояние по прямой
+    const straightDistance = calculateDistance(from.lat, from.lon, to.lat, to.lon);
+    console.log(`   📏 Расстояние по прямой: ${straightDistance.toFixed(2)} км`);
+
+    // Коэффициент извилистости дорог (реальное расстояние / расстояние по прямой)
+    // Для города обычно 1.3-1.5, для пешеходов меньше
+    const routeFactors = {
+        auto: 1.4,        // Автомобили едут по дорогам
+        transit: 1.3,     // Общественный транспорт
+        pedestrian: 1.2,  // Пешеходы могут срезать углы
+    };
+
+    const factor = routeFactors[mode] || 1.3;
+    const realDistance = straightDistance * factor;
+    console.log(`   🛣️ Расстояние по дорогам (коэф. ${factor}): ${realDistance.toFixed(2)} км`);
+
+    // Средняя скорость с учетом остановок, светофоров, пробок
+    const speeds = {
+        auto: 35,        // Автомобиль в городе с пробками
+        transit: 22,     // Общественный транспорт с остановками
+        pedestrian: 4.5, // Пешеход
+    };
+
+    const speed = speeds[mode] || speeds.transit;
+    const duration = Math.round((realDistance / speed) * 60); // В минутах
+
+    console.log(`   🚌 Средняя скорость для "${mode}": ${speed} км/ч`);
+    console.log(`   ⏱️ Расчетное время в пути: ${duration} мин`);
+
+    const steps = generateMockSteps(mode, realDistance, duration);
+    console.log(`   📝 Создано шагов маршрута: ${steps.length}`);
+
+    return {
+        distance: realDistance.toFixed(1),
+        duration: duration,
+        mode: mode,
+        departureTime: null,
+        arrivalTime: null,
+        steps: steps,
+        isRealRoute: false, // Флаг что это расчет
     };
 };
 

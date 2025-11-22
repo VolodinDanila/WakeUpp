@@ -122,6 +122,7 @@ export default function RouteScreen() {
       routeResult.toAddress = settings.universityAddress;
 
       console.log('📊 Итоговые данные маршрута:');
+      console.log('   Тип:', routeResult.isRealRoute ? '✓ Реальный маршрут (API)' : '≈ Расчетный (улучшенный)');
       console.log('   Адреса:', {
         from: routeResult.fromAddress,
         to: routeResult.toAddress
@@ -294,16 +295,28 @@ export default function RouteScreen() {
 
       {/* Основная информация о маршруте */}
       <View style={styles.summaryCard}>
+        {/* Индикатор типа маршрута */}
+        {routeData.isRealRoute !== undefined && (
+          <View style={[
+            styles.routeTypeBadge,
+            routeData.isRealRoute ? styles.realRouteBadge : styles.estimatedRouteBadge
+          ]}>
+            <Text style={styles.routeTypeBadgeText}>
+              {routeData.isRealRoute ? '✓ Реальный маршрут' : '≈ Расчетный маршрут'}
+            </Text>
+          </View>
+        )}
+
         <View style={styles.timeContainer}>
           <View style={styles.timeBlock}>
             <Text style={styles.timeLabel}>Выезд</Text>
             <Text style={styles.timeValue}>{routeData.departureTime}</Text>
           </View>
-          
+
           <View style={styles.arrowContainer}>
             <Text style={styles.arrow}>→</Text>
           </View>
-          
+
           <View style={styles.timeBlock}>
             <Text style={styles.timeLabel}>Прибытие</Text>
             <Text style={styles.timeValue}>{routeData.arrivalTime}</Text>
@@ -374,7 +387,9 @@ export default function RouteScreen() {
       {/* Информационный блок */}
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>
-          💡 Маршрут рассчитан по прямой. Для точного маршрута откройте Яндекс.Карты
+          {routeData.isRealRoute
+            ? '✓ Маршрут получен от Yandex Router API с учетом дорог и пробок'
+            : '≈ Расчетный маршрут (расстояние × 1.3-1.4 + средняя скорость). Для точного времени откройте в Яндекс.Картах'}
         </Text>
       </View>
     </ScrollView>
@@ -485,6 +500,24 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  routeTypeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 15,
+  },
+  realRouteBadge: {
+    backgroundColor: '#E8F5E9',
+  },
+  estimatedRouteBadge: {
+    backgroundColor: '#FFF3E0',
+  },
+  routeTypeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
   },
   timeContainer: {
     flexDirection: 'row',
