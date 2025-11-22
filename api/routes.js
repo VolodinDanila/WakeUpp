@@ -8,11 +8,13 @@
  * 3. Добавьте ключ в настройки
  */
 
-// ВАЖНО: Замените на свой API ключ от Яндекс.Карт
+// ВАЖНО: Замените на свой API ключ от Яндекс.Карт (только для геокодирования)
 // Получите ключ на https://developer.tech.yandex.ru/
 const YANDEX_API_KEY = 'YOUR_YANDEX_API_KEY';
 const GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/';
-const ROUTER_URL = 'https://api.routing.yandex.net/v2/route';
+
+// OSRM (Open Source Routing Machine) - бесплатный публичный API для маршрутов
+const OSRM_URL = 'https://router.project-osrm.org';
 
 /**
  * Геокодирование - преобразование адреса в координаты
@@ -155,84 +157,81 @@ const generateYandexMapUrl = (from, to, mode) => {
 };
 
 /**
- * Расчет маршрута через Yandex Router API
+ * Расчет маршрута через OSRM API (бесплатный)
  * @param {Object} from - Координаты начала
  * @param {Object} to - Координаты конца
  * @param {string} mode - Режим транспорта
  * @returns {Promise<Object>} Данные маршрута с альтернативными вариантами
  */
 const calculateRoute = async (from, to, mode) => {
-    // Проверяем наличие API ключа
-    if (!YANDEX_API_KEY || YANDEX_API_KEY === 'YOUR_YANDEX_API_KEY') {
-        throw new Error('⚠️ API ключ Яндекс.Карт не настроен! Добавьте ключ в api/routes.js');
-    }
-
-    console.log('   🚀 Запрашиваю маршруты от Yandex Router API...');
-    const routeData = await fetchRealRoutes(from, to, mode);
+    console.log('   🚀 Запрашиваю маршруты от OSRM API (бесплатный)...');
+    const routeData = await fetchOSRMRoutes(from, to, mode);
     console.log(`   ✅ Получено маршрутов: ${routeData.alternatives.length}`);
 
     return routeData;
 };
 
 /**
- * Запрос к реальному Yandex Router API с получением альтернативных маршрутов
- * @param {Object} from - Координаты начала
- * @param {Object} to - Координаты конца
- * @param {string} mode - Режим транспорта
+ * Запрос к OSRM API для получения реальных маршрутов
+ * OSRM поддерживает: driving (авто), walking (пешком)
+ * НЕ поддерживает: общественный транспорт
+ *
+ * @param {Object} from - Координаты начала { lat, lon }
+ * @param {Object} to - Координаты конца { lat, lon }
+ * @param {string} mode - Режим: 'auto', 'pedestrian', 'transit'
  * @returns {Promise<Object>} Данные маршрута с альтернативами
  */
-const fetchRealRoutes = async (from, to, mode) => {
-    // Yandex Router API использует формат: lon,lat (не lat,lon!)
-    const waypoints = `${from.lon},${from.lat}|${to.lon},${to.lat}`;
+const fetchOSRMRoutes = async (from, to, mode) => {
+    // Для общественного транспорта OSRM не подходит
+    if (mode === 'transit') {
+        console.log('   ⚠️ OSRM не поддерживает общественный транспорт');
+        console.log('   💡 Для маршрутов общественным транспортом нужен Yandex Router API (платный)');
+        throw new Error('Маршруты общественным транспортом требуют коммерческий API. Попробуйте режим "Пешком" или "Авто".');
+    }
 
-    // Маппинг режимов для Yandex API
-    const modeMap = {
+    // Маппинг режимов для OSRM API
+    const profileMap = {
         auto: 'driving',
-        transit: 'transit',
-        pedestrian: 'walking',
+        pedestrian: 'foot',
     };
-    const yandexMode = modeMap[mode] || 'transit';
+    const profile = profileMap[mode] || 'foot';
 
-    // Запрашиваем альтернативные маршруты (alternatives=3 - максимум 3 варианта)
-    const url = `${ROUTER_URL}?apikey=${YANDEX_API_KEY}&waypoints=${waypoints}&mode=${yandexMode}&alternatives=3`;
+    // OSRM использует формат: lon,lat (не lat,lon!)
+    const coordinates = `${from.lon},${from.lat};${to.lon},${to.lat}`;
 
-    console.log(`   🔗 Запрос: ${yandexMode} маршрут с альтернативами`);
+    // Запрашиваем альтернативные маршруты + детальные шаги
+    const url = `${OSRM_URL}/route/v1/${profile}/${coordinates}?alternatives=true&steps=true&overview=full`;
+
+    console.log(`   🔗 Запрос к OSRM: ${profile} (${mode})`);
+    console.log(`   🌐 URL: ${url}`);
 
     const response = await fetch(url);
 
     if (!response.ok) {
-        if (response.status === 403) {
-            throw new Error('Неверный API ключ или нет доступа к Yandex Router API');
-        }
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(`OSRM API ошибка: HTTP ${response.status}`);
     }
 
     const data = await response.json();
 
-    console.log('   📦 Полный ответ API:', JSON.stringify(data, null, 2));
+    console.log(`   📦 OSRM ответ: код "${data.code}"`);
 
-    // Yandex Router API может вернуть routes[] массив с несколькими вариантами
-    let routes = [];
-
-    if (data.route) {
-        // Один маршрут
-        routes = [data.route];
-    } else if (data.routes && Array.isArray(data.routes)) {
-        // Несколько маршрутов
-        routes = data.routes;
-    } else {
-        throw new Error('Нет данных о маршрутах в ответе API');
+    if (data.code !== 'Ok') {
+        throw new Error(`OSRM вернул ошибку: ${data.code} - ${data.message || 'неизвестная ошибка'}`);
     }
 
-    console.log(`   📊 Найдено вариантов маршрута: ${routes.length}`);
+    if (!data.routes || data.routes.length === 0) {
+        throw new Error('OSRM не нашел маршрутов');
+    }
+
+    console.log(`   📊 Найдено вариантов маршрута: ${data.routes.length}`);
 
     // Парсим все варианты маршрутов
-    const alternatives = routes.map((route, index) => {
+    const alternatives = data.routes.map((route, index) => {
         const distance = (route.distance / 1000).toFixed(1); // метры → км
         const duration = Math.round(route.duration / 60); // секунды → минуты
-        const steps = parseRouteSteps(route.legs, mode, distance, duration);
+        const steps = parseOSRMSteps(route.legs, mode);
 
-        console.log(`   ${index + 1}. 📏 ${distance} км, ⏱️ ${duration} мин`);
+        console.log(`   ${index + 1}. 📏 ${distance} км, ⏱️ ${duration} мин (${steps.length} шагов)`);
 
         return {
             id: String(index),
@@ -240,8 +239,6 @@ const fetchRealRoutes = async (from, to, mode) => {
             duration: duration,
             mode: mode,
             steps: steps,
-            // Дополнительная информация
-            trafficDuration: route.duration_in_traffic ? Math.round(route.duration_in_traffic / 60) : duration,
             routeType: index === 0 ? 'fastest' : index === 1 ? 'optimal' : 'alternative',
             routeTypeName: index === 0 ? 'Самый быстрый' : index === 1 ? 'Оптимальный' : 'Альтернативный',
         };
@@ -258,28 +255,43 @@ const fetchRealRoutes = async (from, to, mode) => {
         arrivalTime: null,
         steps: mainRoute.steps,
         isRealRoute: true,
+        apiSource: 'OSRM',
         alternatives: alternatives, // Все варианты маршрутов
     };
 };
 
 /**
- * Парсинг шагов маршрута из ответа Yandex API
+ * Парсинг шагов маршрута из ответа OSRM API
+ * @param {Array} legs - Массив legs из OSRM
+ * @param {string} mode - Режим транспорта
+ * @returns {Array} Массив шагов маршрута
  */
-const parseRouteSteps = (legs, mode, totalDistance, totalDuration) => {
+const parseOSRMSteps = (legs, mode) => {
     const steps = [];
     let stepId = 1;
 
+    // Определяем тип шага по режиму
+    const stepType = mode === 'auto' ? 'car' : 'walk';
+
     if (legs && legs.length > 0) {
         legs.forEach(leg => {
-            if (leg.steps) {
+            if (leg.steps && leg.steps.length > 0) {
                 leg.steps.forEach(step => {
+                    // Пропускаем финальный шаг "arrive"
+                    if (step.maneuver && step.maneuver.type === 'arrive') {
+                        return;
+                    }
+
+                    const instruction = step.maneuver?.modifier
+                        ? `${getManeuverText(step.maneuver.type)} ${getModifierText(step.maneuver.modifier)}`
+                        : getManeuverText(step.maneuver?.type || 'continue');
+
                     steps.push({
                         id: String(stepId++),
-                        type: determineStepType(step, mode),
-                        description: step.instruction || step.html_instructions || 'Продолжайте движение',
-                        duration: Math.round(step.duration / 60), // секунды → минуты
+                        type: stepType,
+                        description: instruction || 'Продолжайте движение',
+                        duration: Math.round(step.duration / 60) || 1, // секунды → минуты (минимум 1)
                         distance: (step.distance / 1000).toFixed(2), // метры → км
-                        routeNumber: step.transit_details?.line?.short_name || null,
                     });
                 });
             }
@@ -288,30 +300,56 @@ const parseRouteSteps = (legs, mode, totalDistance, totalDuration) => {
 
     // Если шагов нет, создаем один обобщенный
     if (steps.length === 0) {
-        return generateMockSteps(mode, parseFloat(totalDistance), totalDuration);
+        return [{
+            id: '1',
+            type: stepType,
+            description: mode === 'auto' ? 'Поездка на автомобиле' : 'Пешком до пункта назначения',
+            duration: 0,
+            distance: 0,
+        }];
     }
 
     return steps;
 };
 
 /**
- * Определение типа шага маршрута
+ * Перевод типа маневра OSRM на русский
  */
-const determineStepType = (step, defaultMode) => {
-    if (step.travel_mode === 'WALKING') return 'walk';
-    if (step.travel_mode === 'TRANSIT') {
-        const vehicle = step.transit_details?.line?.vehicle?.type;
-        if (vehicle === 'BUS') return 'bus';
-        if (vehicle === 'SUBWAY') return 'metro';
-        return 'bus';
-    }
-    if (step.travel_mode === 'DRIVING') return 'car';
-
-    // Fallback на основе mode
-    if (defaultMode === 'pedestrian') return 'walk';
-    if (defaultMode === 'auto') return 'car';
-    return 'bus';
+const getManeuverText = (type) => {
+    const maneuvers = {
+        'turn': 'Поворот',
+        'new name': 'Продолжайте по',
+        'depart': 'Начните движение',
+        'arrive': 'Прибытие',
+        'merge': 'Слияние',
+        'on ramp': 'Въезд на',
+        'off ramp': 'Съезд с',
+        'fork': 'Развилка',
+        'end of road': 'Конец дороги',
+        'continue': 'Продолжайте движение',
+        'roundabout': 'Круговое движение',
+        'rotary': 'Круговое движение',
+    };
+    return maneuvers[type] || 'Движение';
 };
+
+/**
+ * Перевод модификатора направления на русский
+ */
+const getModifierText = (modifier) => {
+    const modifiers = {
+        'uturn': 'разворот',
+        'sharp right': 'резко направо',
+        'right': 'направо',
+        'slight right': 'плавно направо',
+        'straight': 'прямо',
+        'slight left': 'плавно налево',
+        'left': 'налево',
+        'sharp left': 'резко налево',
+    };
+    return modifiers[modifier] || '';
+};
+
 
 /**
  * Расчет расстояния между двумя точками (формула Haversine)
