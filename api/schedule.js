@@ -1,9 +1,20 @@
 /**
  * API для работы с расписанием Московского Политехнического
  * Парсинг расписания с сайта rasp.dmami.ru
+ *
+ * ⚠️ CORS проблема в веб-версии:
+ * - В браузере будет ошибка CORS
+ * - Решение 1: Запустите прокси: node cors-proxy.js
+ * - Решение 2: Используйте на реальном устройстве (npm run android/ios)
+ * - Решение 3: Установите расширение CORS Unblock в браузер
  */
 
-const BASE_URL = 'https://rasp.dmami.ru/site/group';
+// Для веб-версии используем прокси (если запущен)
+// Для мобильной версии используем прямой URL
+const USE_PROXY = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+const PROXY_URL = 'http://localhost:3001';
+const DIRECT_URL = 'https://rasp.dmami.ru/site/group';
+const BASE_URL = USE_PROXY ? PROXY_URL : DIRECT_URL;
 
 /**
  * Получение расписания группы с сайта университета
@@ -17,7 +28,23 @@ export const fetchScheduleFromUniversity = async (groupNumber) => {
 
     const url = `${BASE_URL}?group=${groupNumber}&session=0`;
 
+    console.log(`📡 Используется: ${USE_PROXY ? 'прокси-сервер' : 'прямое подключение'}`);
+
     try {
+        // Если используем прокси, делаем простой запрос
+        if (USE_PROXY) {
+            console.log(`🔄 Запрос через прокси: ${url}`);
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                throw new Error(`Прокси вернул ошибку: ${response.status}. Убедитесь, что прокси запущен (node cors-proxy.js)`);
+            }
+
+            const data = await response.json();
+            return data;
+        }
+
+        // Прямой запрос (для мобильной версии)
         // Первый запрос - получаем cookie
         const firstResponse = await fetch(url, {
             method: 'GET',
@@ -59,7 +86,13 @@ export const fetchScheduleFromUniversity = async (groupNumber) => {
         return scheduleData;
 
     } catch (error) {
-        console.error('Ошибка получения расписания:', error);
+        console.error('❌ Ошибка получения расписания:', error);
+
+        // Если CORS ошибка, даем подсказку
+        if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+            throw new Error('CORS ошибка. Запустите прокси-сервер: node cors-proxy.js (см. инструкцию в README)');
+        }
+
         throw new Error('Не удалось загрузить расписание. Проверьте номер группы и интернет-соединение.');
     }
 };
