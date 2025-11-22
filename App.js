@@ -15,7 +15,7 @@ import { StyleSheet } from 'react-native';
 import HomeScreen from './screens/HomeScreen';
 import ScheduleScreen from './screens/ScheduleScreen';
 import SettingsScreen from './screens/SettingsScreen';
-import RouteScreen from './screens/RouteScreen';
+import TodayScreen from './screens/TodayScreen';
 import RemindersScreen from './screens/RemindersScreen';
 import AddReminderScreen from './screens/AddReminderScreen';
 
@@ -79,6 +79,15 @@ export default function App() {
           }}
         />
         
+        {/* Экран "Сегодня" - занятия и напоминания на день */}
+        <Tab.Screen
+          name="Сегодня"
+          component={TodayScreen}
+          options={{
+            tabBarLabel: 'Сегодня',
+          }}
+        />
+
         {/* Экран расписания занятий */}
         <Tab.Screen
           name="Расписание"
@@ -95,15 +104,6 @@ export default function App() {
           options={{
             tabBarLabel: 'Напоминания',
             headerShown: false, // Заголовок показывает внутренний стек
-          }}
-        />
-
-        {/* Экран маршрута до университета */}
-        <Tab.Screen
-          name="Маршрут"
-          component={RouteScreen}
-          options={{
-            tabBarLabel: 'Маршрут',
           }}
         />
         
