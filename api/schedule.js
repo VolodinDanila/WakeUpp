@@ -317,3 +317,29 @@ const getDayName = (dayNumber) => {
     };
     return days[dayNumber] || 'Неизвестный день';
 };
+
+/**
+ * Получение расписания на сегодня
+ * @param {string} groupNumber - Номер группы
+ * @returns {Promise<Array>} Массив занятий на сегодня
+ */
+export const getScheduleForToday = async (groupNumber) => {
+    try {
+        // Загружаем расписание
+        const rawSchedule = await fetchScheduleFromUniversity(groupNumber);
+
+        // Парсим расписание
+        const parsedSchedule = parseSchedule(rawSchedule);
+
+        // Определяем текущий день недели
+        const now = new Date();
+        const currentDay = now.getDay(); // 0 = воскресенье, 1 = понедельник
+        const normalizedDay = currentDay === 0 ? 7 : currentDay; // 1-6 для пн-сб
+
+        // Возвращаем расписание на сегодня
+        return getScheduleForDay(parsedSchedule, normalizedDay);
+    } catch (error) {
+        console.error('❌ Ошибка загрузки расписания на сегодня:', error);
+        return [];
+    }
+};
