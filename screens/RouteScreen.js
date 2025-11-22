@@ -33,6 +33,7 @@ export default function RouteScreen() {
   const [loading, setLoading] = useState(true);
   const [routeData, setRouteData] = useState(null);
   const [trafficLevel, setTrafficLevel] = useState('medium'); // low, medium, high
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0); // Выбранный вариант маршрута
 
   /**
    * Загрузка данных о маршруте при монтировании компонента
@@ -293,16 +294,50 @@ export default function RouteScreen() {
         </View>
       )}
 
+      {/* Список вариантов маршрутов */}
+      {routeData.alternatives && routeData.alternatives.length > 1 && (
+        <View style={styles.alternativesCard}>
+          <Text style={styles.alternativesTitle}>Варианты маршрута</Text>
+          {routeData.alternatives.map((alt, index) => (
+            <TouchableOpacity
+              key={alt.id}
+              style={[
+                styles.alternativeItem,
+                selectedRouteIndex === index && styles.alternativeItemActive
+              ]}
+              onPress={() => setSelectedRouteIndex(index)}
+            >
+              <View style={styles.alternativeHeader}>
+                <Text style={[
+                  styles.alternativeType,
+                  selectedRouteIndex === index && styles.alternativeTypeActive
+                ]}>
+                  {alt.routeTypeName}
+                </Text>
+                {selectedRouteIndex === index && (
+                  <Text style={styles.alternativeCheckmark}>✓</Text>
+                )}
+              </View>
+              <View style={styles.alternativeStats}>
+                <Text style={styles.alternativeStat}>
+                  ⏱️ {alt.duration} мин
+                </Text>
+                <Text style={styles.alternativeStat}>
+                  📏 {alt.distance} км
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {/* Основная информация о маршруте */}
       <View style={styles.summaryCard}>
         {/* Индикатор типа маршрута */}
-        {routeData.isRealRoute !== undefined && (
-          <View style={[
-            styles.routeTypeBadge,
-            routeData.isRealRoute ? styles.realRouteBadge : styles.estimatedRouteBadge
-          ]}>
+        {routeData.isRealRoute && (
+          <View style={styles.routeTypeBadge}>
             <Text style={styles.routeTypeBadgeText}>
-              {routeData.isRealRoute ? '✓ Реальный маршрут' : '≈ Расчетный маршрут'}
+              ✓ От Yandex Router API
             </Text>
           </View>
         )}
@@ -319,19 +354,34 @@ export default function RouteScreen() {
 
           <View style={styles.timeBlock}>
             <Text style={styles.timeLabel}>Прибытие</Text>
-            <Text style={styles.timeValue}>{routeData.arrivalTime}</Text>
+            <Text style={styles.timeValue}>
+              {(() => {
+                const selectedRoute = routeData.alternatives?.[selectedRouteIndex];
+                if (!selectedRoute || !routeData.departureTime) return routeData.arrivalTime;
+
+                const [hours, minutes] = routeData.departureTime.split(':').map(Number);
+                const departureDate = new Date();
+                departureDate.setHours(hours, minutes, 0, 0);
+                const arrivalDate = new Date(departureDate.getTime() + selectedRoute.duration * 60000);
+                return `${String(arrivalDate.getHours()).padStart(2, '0')}:${String(arrivalDate.getMinutes()).padStart(2, '0')}`;
+              })()}
+            </Text>
           </View>
         </View>
 
         <View style={styles.summaryDetails}>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Время в пути</Text>
-            <Text style={styles.summaryValue}>{routeData.duration} мин</Text>
+            <Text style={styles.summaryValue}>
+              {routeData.alternatives?.[selectedRouteIndex]?.duration || routeData.duration} мин
+            </Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Расстояние</Text>
-            <Text style={styles.summaryValue}>{routeData.distance} км</Text>
+            <Text style={styles.summaryValue}>
+              {routeData.alternatives?.[selectedRouteIndex]?.distance || routeData.distance} км
+            </Text>
           </View>
         </View>
       </View>
@@ -357,9 +407,9 @@ export default function RouteScreen() {
 
       {/* Детальный маршрут */}
       <View style={styles.routeCard}>
-        <Text style={styles.routeTitle}>Маршрут</Text>
+        <Text style={styles.routeTitle}>Подробный маршрут</Text>
         <View style={styles.stepsContainer}>
-          {routeData.steps.map((step, index) => renderRouteStep(step, index))}
+          {(routeData.alternatives?.[selectedRouteIndex]?.steps || routeData.steps).map((step, index) => renderRouteStep(step, index))}
         </View>
       </View>
 
@@ -387,9 +437,8 @@ export default function RouteScreen() {
       {/* Информационный блок */}
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>
-          {routeData.isRealRoute
-            ? '✓ Маршрут получен от Yandex Router API с учетом дорог и пробок'
-            : '≈ Расчетный маршрут (расстояние × 1.3-1.4 + средняя скорость). Для точного времени откройте в Яндекс.Картах'}
+          ✓ Маршрут получен от Yandex Router API
+          {routeData.alternatives && routeData.alternatives.length > 1 && ` (${routeData.alternatives.length} варианта)`}
         </Text>
       </View>
     </ScrollView>
@@ -489,10 +538,69 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // Карточка альтернативных маршрутов
+  alternativesCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 15,
+    marginTop: 15,
+    marginBottom: 10,
+    padding: 15,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  alternativesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  alternativeItem: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    marginBottom: 8,
+  },
+  alternativeItemActive: {
+    borderColor: '#007AFF',
+    backgroundColor: '#F0F7FF',
+  },
+  alternativeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  alternativeType: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  alternativeTypeActive: {
+    color: '#007AFF',
+  },
+  alternativeCheckmark: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: 'bold',
+  },
+  alternativeStats: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  alternativeStat: {
+    fontSize: 13,
+    color: '#999',
+  },
   // Карточка сводки
   summaryCard: {
     backgroundColor: '#fff',
     margin: 15,
+    marginTop: 10,
     padding: 20,
     borderRadius: 12,
     shadowColor: '#000',
@@ -507,17 +615,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignSelf: 'flex-start',
     marginBottom: 15,
-  },
-  realRouteBadge: {
     backgroundColor: '#E8F5E9',
-  },
-  estimatedRouteBadge: {
-    backgroundColor: '#FFF3E0',
   },
   routeTypeBadgeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#666',
+    color: '#2E7D32',
   },
   timeContainer: {
     flexDirection: 'row',

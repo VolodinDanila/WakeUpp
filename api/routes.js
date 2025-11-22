@@ -155,40 +155,33 @@ const generateYandexMapUrl = (from, to, mode) => {
 };
 
 /**
- * Расчет маршрута (пробуем реальный API, если не получается - упрощенный расчет)
+ * Расчет маршрута через Yandex Router API
  * @param {Object} from - Координаты начала
  * @param {Object} to - Координаты конца
  * @param {string} mode - Режим транспорта
- * @returns {Promise<Object>} Данные маршрута
+ * @returns {Promise<Object>} Данные маршрута с альтернативными вариантами
  */
 const calculateRoute = async (from, to, mode) => {
-    // Сначала пробуем реальный Yandex Router API
-    if (YANDEX_API_KEY && YANDEX_API_KEY !== 'YOUR_YANDEX_API_KEY') {
-        try {
-            console.log('   🚀 Пробую использовать Yandex Router API...');
-            const realRoute = await fetchRealRoute(from, to, mode);
-            console.log('   ✅ Получен реальный маршрут от Yandex Router API');
-            return realRoute;
-        } catch (error) {
-            console.log('   ⚠️ Yandex Router API недоступен:', error.message);
-            console.log('   📐 Переключаюсь на улучшенный расчет...');
-        }
-    } else {
-        console.log('   ⚠️ API ключ не настроен, используется расчет по дорогам');
+    // Проверяем наличие API ключа
+    if (!YANDEX_API_KEY || YANDEX_API_KEY === 'YOUR_YANDEX_API_KEY') {
+        throw new Error('⚠️ API ключ Яндекс.Карт не настроен! Добавьте ключ в api/routes.js');
     }
 
-    // Если API не сработал, используем улучшенный расчет
-    return calculateImprovedRoute(from, to, mode);
+    console.log('   🚀 Запрашиваю маршруты от Yandex Router API...');
+    const routeData = await fetchRealRoutes(from, to, mode);
+    console.log(`   ✅ Получено маршрутов: ${routeData.alternatives.length}`);
+
+    return routeData;
 };
 
 /**
- * Запрос к реальному Yandex Router API
+ * Запрос к реальному Yandex Router API с получением альтернативных маршрутов
  * @param {Object} from - Координаты начала
  * @param {Object} to - Координаты конца
  * @param {string} mode - Режим транспорта
- * @returns {Promise<Object>} Данные маршрута
+ * @returns {Promise<Object>} Данные маршрута с альтернативами
  */
-const fetchRealRoute = async (from, to, mode) => {
+const fetchRealRoutes = async (from, to, mode) => {
     // Yandex Router API использует формат: lon,lat (не lat,lon!)
     const waypoints = `${from.lon},${from.lat}|${to.lon},${to.lat}`;
 
@@ -200,70 +193,102 @@ const fetchRealRoute = async (from, to, mode) => {
     };
     const yandexMode = modeMap[mode] || 'transit';
 
-    const url = `${ROUTER_URL}?apikey=${YANDEX_API_KEY}&waypoints=${waypoints}&mode=${yandexMode}`;
+    // Запрашиваем альтернативные маршруты (alternatives=3 - максимум 3 варианта)
+    const url = `${ROUTER_URL}?apikey=${YANDEX_API_KEY}&waypoints=${waypoints}&mode=${yandexMode}&alternatives=3`;
 
-    console.log(`   🔗 Запрос: ${yandexMode} маршрут`);
+    console.log(`   🔗 Запрос: ${yandexMode} маршрут с альтернативами`);
 
     const response = await fetch(url);
 
     if (!response.ok) {
+        if (response.status === 403) {
+            throw new Error('Неверный API ключ или нет доступа к Yandex Router API');
+        }
         throw new Error(`HTTP ${response.status}`);
     }
 
     const data = await response.json();
 
-    if (!data.route || !data.route.legs || data.route.legs.length === 0) {
-        throw new Error('Нет данных о маршруте в ответе API');
+    console.log('   📦 Полный ответ API:', JSON.stringify(data, null, 2));
+
+    // Yandex Router API может вернуть routes[] массив с несколькими вариантами
+    let routes = [];
+
+    if (data.route) {
+        // Один маршрут
+        routes = [data.route];
+    } else if (data.routes && Array.isArray(data.routes)) {
+        // Несколько маршрутов
+        routes = data.routes;
+    } else {
+        throw new Error('Нет данных о маршрутах в ответе API');
     }
 
-    // Парсим первый (самый быстрый) маршрут
-    const route = data.route;
-    const distance = (route.distance / 1000).toFixed(1); // метры → км
-    const duration = Math.round(route.duration / 60); // секунды → минуты
+    console.log(`   📊 Найдено вариантов маршрута: ${routes.length}`);
 
-    console.log(`   📏 Расстояние по дорогам: ${distance} км`);
-    console.log(`   ⏱️ Время в пути: ${duration} мин`);
+    // Парсим все варианты маршрутов
+    const alternatives = routes.map((route, index) => {
+        const distance = (route.distance / 1000).toFixed(1); // метры → км
+        const duration = Math.round(route.duration / 60); // секунды → минуты
+        const steps = parseRouteSteps(route.legs, mode, distance, duration);
 
-    // Парсим шаги маршрута
-    const steps = parseRouteSteps(route.legs, mode);
-    console.log(`   📝 Шагов маршрута: ${steps.length}`);
+        console.log(`   ${index + 1}. 📏 ${distance} км, ⏱️ ${duration} мин`);
+
+        return {
+            id: String(index),
+            distance: distance,
+            duration: duration,
+            mode: mode,
+            steps: steps,
+            // Дополнительная информация
+            trafficDuration: route.duration_in_traffic ? Math.round(route.duration_in_traffic / 60) : duration,
+            routeType: index === 0 ? 'fastest' : index === 1 ? 'optimal' : 'alternative',
+            routeTypeName: index === 0 ? 'Самый быстрый' : index === 1 ? 'Оптимальный' : 'Альтернативный',
+        };
+    });
+
+    // Основной маршрут (первый = самый быстрый)
+    const mainRoute = alternatives[0];
 
     return {
-        distance: distance,
-        duration: duration,
+        distance: mainRoute.distance,
+        duration: mainRoute.duration,
         mode: mode,
         departureTime: null,
         arrivalTime: null,
-        steps: steps,
-        isRealRoute: true, // Флаг что это реальный маршрут
+        steps: mainRoute.steps,
+        isRealRoute: true,
+        alternatives: alternatives, // Все варианты маршрутов
     };
 };
 
 /**
  * Парсинг шагов маршрута из ответа Yandex API
  */
-const parseRouteSteps = (legs, mode) => {
+const parseRouteSteps = (legs, mode, totalDistance, totalDuration) => {
     const steps = [];
     let stepId = 1;
 
-    legs.forEach(leg => {
-        if (leg.steps) {
-            leg.steps.forEach(step => {
-                steps.push({
-                    id: String(stepId++),
-                    type: determineStepType(step, mode),
-                    description: step.instruction || 'Продолжайте движение',
-                    duration: Math.round(step.duration / 60), // секунды → минуты
-                    distance: (step.distance / 1000).toFixed(2), // метры → км
-                    routeNumber: step.transit_details?.line?.short_name || null,
+    if (legs && legs.length > 0) {
+        legs.forEach(leg => {
+            if (leg.steps) {
+                leg.steps.forEach(step => {
+                    steps.push({
+                        id: String(stepId++),
+                        type: determineStepType(step, mode),
+                        description: step.instruction || step.html_instructions || 'Продолжайте движение',
+                        duration: Math.round(step.duration / 60), // секунды → минуты
+                        distance: (step.distance / 1000).toFixed(2), // метры → км
+                        routeNumber: step.transit_details?.line?.short_name || null,
+                    });
                 });
-            });
-        }
-    });
+            }
+        });
+    }
 
     // Если шагов нет, создаем один обобщенный
     if (steps.length === 0) {
-        return generateMockSteps(mode, parseFloat(distance), duration);
+        return generateMockSteps(mode, parseFloat(totalDistance), totalDuration);
     }
 
     return steps;
@@ -286,59 +311,6 @@ const determineStepType = (step, defaultMode) => {
     if (defaultMode === 'pedestrian') return 'walk';
     if (defaultMode === 'auto') return 'car';
     return 'bus';
-};
-
-/**
- * Улучшенный расчет маршрута (с учетом реальности дорог)
- * @param {Object} from - Координаты начала
- * @param {Object} to - Координаты конца
- * @param {string} mode - Режим транспорта
- * @returns {Object} Данные маршрута
- */
-const calculateImprovedRoute = (from, to, mode) => {
-    console.log(`   Координаты: (${from.lat}, ${from.lon}) → (${to.lat}, ${to.lon})`);
-
-    // Рассчитываем расстояние по прямой
-    const straightDistance = calculateDistance(from.lat, from.lon, to.lat, to.lon);
-    console.log(`   📏 Расстояние по прямой: ${straightDistance.toFixed(2)} км`);
-
-    // Коэффициент извилистости дорог (реальное расстояние / расстояние по прямой)
-    // Для города обычно 1.3-1.5, для пешеходов меньше
-    const routeFactors = {
-        auto: 1.4,        // Автомобили едут по дорогам
-        transit: 1.3,     // Общественный транспорт
-        pedestrian: 1.2,  // Пешеходы могут срезать углы
-    };
-
-    const factor = routeFactors[mode] || 1.3;
-    const realDistance = straightDistance * factor;
-    console.log(`   🛣️ Расстояние по дорогам (коэф. ${factor}): ${realDistance.toFixed(2)} км`);
-
-    // Средняя скорость с учетом остановок, светофоров, пробок
-    const speeds = {
-        auto: 35,        // Автомобиль в городе с пробками
-        transit: 22,     // Общественный транспорт с остановками
-        pedestrian: 4.5, // Пешеход
-    };
-
-    const speed = speeds[mode] || speeds.transit;
-    const duration = Math.round((realDistance / speed) * 60); // В минутах
-
-    console.log(`   🚌 Средняя скорость для "${mode}": ${speed} км/ч`);
-    console.log(`   ⏱️ Расчетное время в пути: ${duration} мин`);
-
-    const steps = generateMockSteps(mode, realDistance, duration);
-    console.log(`   📝 Создано шагов маршрута: ${steps.length}`);
-
-    return {
-        distance: realDistance.toFixed(1),
-        duration: duration,
-        mode: mode,
-        departureTime: null,
-        arrivalTime: null,
-        steps: steps,
-        isRealRoute: false, // Флаг что это расчет
-    };
 };
 
 /**
