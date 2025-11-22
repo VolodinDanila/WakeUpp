@@ -15,7 +15,17 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { loadSettings, loadScheduleCache, loadRouteData } from '../utils/storage';
+import {
+  fetchWeatherByCity,
+  getMockWeatherData,
+  getWeatherRecommendations,
+  isWeatherApiConfigured,
+} from '../api/weather';
+import { getNextClass } from '../api/schedule';
+import { calculateAlarm, getTimeUntilAlarm } from '../utils/alarmCalculator';
 
 export default function HomeScreen() {
   // Состояния для хранения данных
@@ -25,47 +35,124 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);          // Индикатор загрузки
 
   /**
-   * Эффект для загрузки данных при запуске экрана
-   * Здесь будут запросы к API для получения погоды и расписания
+   * Загрузка данных при запуске экрана
    */
   useEffect(() => {
     loadData();
   }, []);
 
   /**
+   * Обновление данных каждую минуту
+   */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadData();
+    }, 60000); // Каждую минуту
+
+    return () => clearInterval(interval);
+  }, []);
+
+  /**
    * Функция загрузки данных
-   * TODO: Добавить реальные API запросы
    */
   const loadData = async () => {
+    setLoading(true);
     try {
-      // Симуляция загрузки данных
-      // В будущем здесь будут реальные API запросы
-      setTimeout(() => {
-        // Тестовые данные
-        setNextAlarm({
-          time: '07:30',
-          date: 'Завтра',
-          classTime: '09:00',
-          className: 'Математический анализ',
-        });
+      // Загружаем настройки
+      const settings = await loadSettings();
 
-        setWeather({
-          temperature: 15,
-          condition: 'Облачно',
-          precipitation: 20, // вероятность осадков в %
-        });
+      // Загружаем погоду
+      await loadWeatherData(settings);
 
-        setRecommendations([
-          'Возьмите зонт - возможен дождь',
-          'Оденьтесь теплее - +15°C',
-          'Выезжайте на 5 минут раньше - пробки',
-        ]);
+      // Загружаем и рассчитываем будильник
+      await loadAlarmData(settings);
 
-        setLoading(false);
-      }, 1000);
+      setLoading(false);
     } catch (error) {
       console.error('Ошибка загрузки данных:', error);
       setLoading(false);
+    }
+  };
+
+  /**
+   * Загрузка и расчет будильника
+   */
+  const loadAlarmData = async (settings) => {
+    try {
+      // Загружаем расписание из кэша
+      const schedule = await loadScheduleCache();
+      if (!schedule) {
+        console.log('Нет расписания в кэше');
+        setNextAlarm(null);
+        return;
+      }
+
+      // Получаем следующее занятие
+      const nextClassData = getNextClass(schedule);
+      if (!nextClassData) {
+        console.log('Нет следующего занятия');
+        setNextAlarm(null);
+        return;
+      }
+
+      // Загружаем данные о маршруте
+      const route = await loadRouteData();
+
+      // Рассчитываем будильник
+      const alarm = calculateAlarm(nextClassData, settings, route);
+
+      if (alarm) {
+        setNextAlarm(alarm);
+
+        // Обновляем рекомендации с учетом времени до будильника
+        const timeUntil = getTimeUntilAlarm(alarm.fullDate);
+        if (timeUntil && settings?.weatherNotifications) {
+          setRecommendations(prev => {
+            const newRecs = [...prev];
+            if (timeUntil.hours < 12) {
+              newRecs.unshift(`Будильник через ${timeUntil.formatted}`);
+            }
+            return newRecs;
+          });
+        }
+      } else {
+        setNextAlarm(null);
+      }
+    } catch (error) {
+      console.error('Ошибка расчета будильника:', error);
+      setNextAlarm(null);
+    }
+  };
+
+  /**
+   * Загрузка данных о погоде
+   */
+  const loadWeatherData = async (settings) => {
+    try {
+      let weatherData;
+
+      // Проверяем, настроен ли API
+      if (isWeatherApiConfigured() && settings?.universityAddress) {
+        // Извлекаем город из адреса (первое слово обычно город)
+        const city = settings.universityAddress.split(',')[0].trim();
+        weatherData = await fetchWeatherByCity(city);
+      } else {
+        // Используем mock данные
+        weatherData = getMockWeatherData();
+      }
+
+      setWeather(weatherData);
+
+      // Генерируем рекомендации на основе погоды
+      const weatherRecs = getWeatherRecommendations(weatherData);
+      setRecommendations(weatherRecs);
+
+    } catch (error) {
+      console.error('Ошибка загрузки погоды:', error);
+      // В случае ошибки используем mock данные
+      const mockWeather = getMockWeatherData();
+      setWeather(mockWeather);
+      setRecommendations(getWeatherRecommendations(mockWeather));
     }
   };
 
@@ -91,16 +178,34 @@ export default function HomeScreen() {
           <View style={styles.alarmInfo}>
             <Text style={styles.alarmTime}>{nextAlarm.time}</Text>
             <Text style={styles.alarmDate}>{nextAlarm.date}</Text>
-            
+
             <View style={styles.divider} />
-            
+
             <Text style={styles.classInfo}>
               Занятие в {nextAlarm.classTime}
             </Text>
             <Text style={styles.className}>{nextAlarm.className}</Text>
+
+            {nextAlarm.breakdown && (
+              <View style={styles.breakdownContainer}>
+                <Text style={styles.breakdownTitle}>Расчет времени:</Text>
+                <Text style={styles.breakdownItem}>
+                  Утренняя рутина: {nextAlarm.breakdown.morningRoutine} мин
+                </Text>
+                <Text style={styles.breakdownItem}>
+                  Время в пути: {nextAlarm.breakdown.travelTime} мин
+                </Text>
+                <Text style={styles.breakdownItem}>
+                  Запас времени: {nextAlarm.breakdown.extraTime} мин
+                </Text>
+              </View>
+            )}
           </View>
         ) : (
-          <Text style={styles.noDataText}>Нет запланированных будильников</Text>
+          <Text style={styles.noDataText}>
+            Нет запланированных занятий.{'\n'}
+            Добавьте расписание в настройках.
+          </Text>
         )}
       </View>
 
@@ -112,9 +217,17 @@ export default function HomeScreen() {
           <View style={styles.weatherInfo}>
             <Text style={styles.temperature}>{weather.temperature}°C</Text>
             <Text style={styles.condition}>{weather.condition}</Text>
-            <Text style={styles.precipitation}>
-              Вероятность осадков: {weather.precipitation}%
-            </Text>
+            <View style={styles.weatherDetails}>
+              <Text style={styles.weatherDetailItem}>
+                Ощущается как {weather.feelsLike}°C
+              </Text>
+              <Text style={styles.weatherDetailItem}>
+                Влажность: {weather.humidity}%
+              </Text>
+              <Text style={styles.weatherDetailItem}>
+                Ветер: {weather.windSpeed} м/с
+              </Text>
+            </View>
           </View>
         ) : (
           <Text style={styles.noDataText}>Нет данных о погоде</Text>
@@ -241,6 +354,24 @@ const styles = StyleSheet.create({
     color: '#333',
     marginTop: 5,
   },
+  breakdownContainer: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    width: '100%',
+  },
+  breakdownTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+  },
+  breakdownItem: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
   // Стили погоды
   weatherInfo: {
     alignItems: 'center',
@@ -259,6 +390,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     marginTop: 8,
+  },
+  weatherDetails: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  weatherDetailItem: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
   },
   // Стили рекомендаций
   recommendationsList: {

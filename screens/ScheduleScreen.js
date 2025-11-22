@@ -18,13 +18,22 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { loadSettings, saveScheduleCache, loadScheduleCache } from '../utils/storage';
+import {
+  fetchScheduleFromUniversity,
+  parseSchedule,
+  getScheduleForDay
+} from '../api/schedule';
 
 export default function ScheduleScreen() {
   // Состояния компонента
-  const [selectedDay, setSelectedDay] = useState(1); // Выбранный день недели (0-6)
+  const [selectedDay, setSelectedDay] = useState(1); // Выбранный день недели (1-6)
   const [schedule, setSchedule] = useState([]);      // Расписание занятий
+  const [fullSchedule, setFullSchedule] = useState(null); // Полное расписание
   const [loading, setLoading] = useState(true);
+  const [groupNumber, setGroupNumber] = useState('');
 
   // Дни недели для выбора
   const weekDays = [
@@ -37,57 +46,95 @@ export default function ScheduleScreen() {
   ];
 
   /**
-   * Загрузка расписания при монтировании компонента
-   * и при изменении выбранного дня
+   * Загрузка номера группы при монтировании
    */
   useEffect(() => {
-    loadSchedule();
-  }, [selectedDay]);
+    loadGroupNumber();
+  }, []);
 
   /**
-   * Функция загрузки расписания
-   * TODO: Заменить тестовыми данными на реальный API запрос к сайту ВУЗа
+   * Обновление расписания при изменении выбранного дня
    */
-  const loadSchedule = async () => {
+  useEffect(() => {
+    if (fullSchedule) {
+      updateScheduleForDay();
+    }
+  }, [selectedDay, fullSchedule]);
+
+  /**
+   * Загрузка номера группы из настроек
+   */
+  const loadGroupNumber = async () => {
+    try {
+      const settings = await loadSettings();
+      if (settings && settings.groupNumber) {
+        setGroupNumber(settings.groupNumber);
+        loadSchedule(settings.groupNumber);
+      } else {
+        setLoading(false);
+        Alert.alert(
+          'Настройка группы',
+          'Укажите номер группы в разделе "Настройки" для загрузки расписания',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки настроек:', error);
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Функция загрузки расписания с сервера или из кэша
+   */
+  const loadSchedule = async (group) => {
     setLoading(true);
     try {
-      // Симуляция загрузки данных
-      setTimeout(() => {
-        // Тестовые данные расписания
-        const mockSchedule = [
-          {
-            id: '1',
-            time: '09:00 - 10:30',
-            subject: 'Математический анализ',
-            type: 'Лекция',
-            room: 'ауд. 305',
-            professor: 'Иванов И.И.',
-          },
-          {
-            id: '2',
-            time: '10:45 - 12:15',
-            subject: 'Программирование',
-            type: 'Практика',
-            room: 'ауд. 412',
-            professor: 'Петрова А.С.',
-          },
-          {
-            id: '3',
-            time: '13:00 - 14:30',
-            subject: 'Английский язык',
-            type: 'Практика',
-            room: 'ауд. 201',
-            professor: 'Сидорова М.В.',
-          },
-        ];
-        
-        setSchedule(mockSchedule);
+      // Сначала пробуем загрузить из кэша
+      const cachedSchedule = await loadScheduleCache();
+      if (cachedSchedule) {
+        console.log('Расписание загружено из кэша');
+        setFullSchedule(cachedSchedule);
         setLoading(false);
-      }, 500);
+        return;
+      }
+
+      // Если кэша нет, загружаем с сервера
+      console.log('Загружаю расписание с сервера...');
+      const rawSchedule = await fetchScheduleFromUniversity(group);
+      const parsed = parseSchedule(rawSchedule);
+
+      setFullSchedule(parsed);
+
+      // Сохраняем в кэш
+      await saveScheduleCache(parsed);
+
+      setLoading(false);
     } catch (error) {
       console.error('Ошибка загрузки расписания:', error);
       setLoading(false);
+      Alert.alert(
+        'Ошибка',
+        error.message || 'Не удалось загрузить расписание',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Повторить', onPress: () => loadSchedule(group) }
+        ]
+      );
     }
+  };
+
+  /**
+   * Обновление расписания для выбранного дня
+   */
+  const updateScheduleForDay = () => {
+    if (!fullSchedule) {
+      setSchedule([]);
+      return;
+    }
+
+    const daySchedule = getScheduleForDay(fullSchedule, selectedDay);
+    setSchedule(daySchedule || []);
   };
 
   /**
@@ -179,11 +226,14 @@ export default function ScheduleScreen() {
       )}
 
       {/* Кнопка обновления расписания */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.updateButton}
-        onPress={loadSchedule}
+        onPress={() => groupNumber && loadSchedule(groupNumber)}
+        disabled={!groupNumber}
       >
-        <Text style={styles.updateButtonText}>Обновить расписание</Text>
+        <Text style={styles.updateButtonText}>
+          {groupNumber ? 'Обновить расписание' : 'Укажите группу в настройках'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
