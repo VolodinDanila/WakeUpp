@@ -1,21 +1,22 @@
 /**
  * API для построения маршрутов
- * Использует Яндекс.Карты API:
- * - Геокодер (адрес → координаты)
- * - Matrix API (время и расстояние маршрутов)
+ * Использует:
+ * - Яндекс.Геокодер (адрес → координаты) - нужен API ключ
+ * - OSRM API (маршруты для авто и пешком) - бесплатный
+ * - Ссылки на Яндекс.Карты для просмотра маршрутов
  *
  * Для использования:
- * 1. Получите API ключ на https://developer.tech.yandex.ru/
- * 2. Подключите API: "Матрица Расстояний и Построение Маршрута"
- * 3. Добавьте ключ в настройки приложения
+ * 1. Получите API ключ Яндекса на https://developer.tech.yandex.ru/
+ * 2. Добавьте ключ в настройки приложения
  */
 
-// ВАЖНО: Замените на свой API ключ от Яндекс.Карт
+// ВАЖНО: Замените на свой API ключ от Яндекс.Карт (только для геокодирования)
 // Получите ключ на https://developer.tech.yandex.ru/
-// Нужно подключить API: "Матрица Расстояний и Построение Маршрута"
 const YANDEX_API_KEY = 'YOUR_YANDEX_API_KEY';
 const GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/';
-const MATRIX_URL = 'https://api.routing.yandex.net/v2/distancematrix';
+
+// OSRM (Open Source Routing Machine) - бесплатный API для маршрутов
+const OSRM_URL = 'https://router.project-osrm.org';
 
 /**
  * Геокодирование - преобразование адреса в координаты
@@ -158,83 +159,91 @@ const generateYandexMapUrl = (from, to, mode) => {
 };
 
 /**
- * Расчет маршрута через Yandex Matrix API
+ * Расчет маршрута через OSRM API (бесплатный)
+ * Для общественного транспорта показываем только ссылку на Яндекс.Карты
  * @param {Object} from - Координаты начала
  * @param {Object} to - Координаты конца
  * @param {string} mode - Режим транспорта
  * @returns {Promise<Object>} Данные маршрута
  */
 const calculateRoute = async (from, to, mode) => {
-    console.log('   🚀 Запрашиваю маршрут от Yandex Matrix API...');
-    const routeData = await fetchYandexRoute(from, to, mode);
+    // Для общественного транспорта OSRM не подходит
+    if (mode === 'transit') {
+        console.log('   ⚠️ Для общественного транспорта используется только ссылка на Яндекс.Карты');
+        // Приблизительный расчет для UI (не точный!)
+        const distance = calculateDistance(from.lat, from.lon, to.lat, to.lon);
+        const duration = Math.round(distance / 0.5); // ~30 км/ч средняя скорость
+
+        return {
+            distance: distance.toFixed(1),
+            duration: duration,
+            mode: mode,
+            departureTime: null,
+            arrivalTime: null,
+            steps: generateSimpleSteps(mode, distance.toFixed(1), duration),
+            isRealRoute: false,
+            apiSource: 'Приблизительный расчет (откройте Яндекс.Карты для точного маршрута)',
+            alternatives: [{
+                id: '0',
+                distance: distance.toFixed(1),
+                duration: duration,
+                mode: mode,
+                steps: generateSimpleSteps(mode, distance.toFixed(1), duration),
+                routeType: 'fastest',
+                routeTypeName: 'Откройте в Яндекс.Картах',
+            }],
+        };
+    }
+
+    console.log('   🚀 Запрашиваю маршрут от OSRM API (бесплатный)...');
+    const routeData = await fetchOSRMRoute(from, to, mode);
     console.log(`   ✅ Получен маршрут: ${routeData.duration} мин, ${routeData.distance} км`);
 
     return routeData;
 };
 
 /**
- * Запрос к Yandex Matrix API для получения времени и расстояния маршрута
- * Поддерживает: driving (авто), walking (пешком), transit (общественный транспорт)
+ * Запрос к OSRM API для получения маршрута
+ * Поддерживает: driving (авто), foot (пешком)
  *
  * @param {Object} from - Координаты начала { lat, lon }
  * @param {Object} to - Координаты конца { lat, lon }
- * @param {string} mode - Режим: 'auto', 'pedestrian', 'transit'
- * @returns {Promise<Object>} Данные маршрута от Яндекса
+ * @param {string} mode - Режим: 'auto', 'pedestrian'
+ * @returns {Promise<Object>} Данные маршрута от OSRM
  */
-const fetchYandexRoute = async (from, to, mode) => {
-    // Проверяем API ключ
-    if (!YANDEX_API_KEY || YANDEX_API_KEY === 'YOUR_YANDEX_API_KEY') {
-        throw new Error('API ключ Яндекс.Карт не настроен. Добавьте его в настройки приложения.');
-    }
-
-    // Маппинг режимов для Yandex Matrix API
-    const modeMap = {
+const fetchOSRMRoute = async (from, to, mode) => {
+    // Маппинг режимов для OSRM API
+    const profileMap = {
         auto: 'driving',
-        pedestrian: 'walking',
-        transit: 'transit',
+        pedestrian: 'foot',
     };
-    const yandexMode = modeMap[mode] || 'transit';
+    const profile = profileMap[mode] || 'foot';
 
-    // Yandex Matrix API использует формат: lat,lon (не lon,lat!)
-    const origins = `${from.lat},${from.lon}`;
-    const destinations = `${to.lat},${to.lon}`;
+    // OSRM использует формат: lon,lat (не lat,lon!)
+    const coordinates = `${from.lon},${from.lat};${to.lon},${to.lat}`;
 
-    // Формируем URL запроса
-    const url = `${MATRIX_URL}?apikey=${YANDEX_API_KEY}&origins=${origins}&destinations=${destinations}&mode=${yandexMode}`;
+    // Запрашиваем маршрут без альтернатив (упрощенная версия)
+    const url = `${OSRM_URL}/route/v1/${profile}/${coordinates}?overview=false`;
 
-    console.log(`   🔗 Запрос к Yandex Matrix API: ${yandexMode} (${mode})`);
-    console.log(`   🌐 URL: ${MATRIX_URL}?apikey=***&origins=${origins}&destinations=${destinations}&mode=${yandexMode}`);
+    console.log(`   🔗 Запрос к OSRM: ${profile} (${mode})`);
 
     const response = await fetch(url);
 
     if (!response.ok) {
-        if (response.status === 403 || response.status === 401) {
-            throw new Error('Неверный API ключ или нет доступа к Yandex Matrix API. Убедитесь, что подключен API "Матрица Расстояний и Построение Маршрута"');
-        }
-        throw new Error(`Yandex Matrix API ошибка: HTTP ${response.status}`);
+        throw new Error(`OSRM API ошибка: HTTP ${response.status}`);
     }
 
     const data = await response.json();
 
-    console.log('   📦 Yandex Matrix API ответ:', JSON.stringify(data, null, 2));
-
-    // Проверяем структуру ответа
-    if (!data.rows || !data.rows[0] || !data.rows[0].elements || !data.rows[0].elements[0]) {
-        throw new Error('Некорректный ответ от Yandex Matrix API');
+    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+        throw new Error(`OSRM не смог построить маршрут: ${data.code || 'нет маршрутов'}`);
     }
 
-    const element = data.rows[0].elements[0];
+    const route = data.routes[0];
+    const distance = (route.distance / 1000).toFixed(1); // метры → км
+    const duration = Math.round(route.duration / 60); // секунды → минуты
 
-    // Проверяем статус
-    if (element.status !== 'OK') {
-        throw new Error(`Не удалось построить маршрут: ${element.status}`);
-    }
-
-    // Получаем время и расстояние
-    const duration = Math.round(element.duration.value / 60); // секунды → минуты
-    const distance = (element.distance.value / 1000).toFixed(1); // метры → км
-
-    console.log(`   ✅ Маршрут от Яндекса: ${distance} км, ${duration} мин`);
+    console.log(`   ✅ Маршрут от OSRM: ${distance} км, ${duration} мин`);
 
     // Генерируем простые шаги для отображения
     const steps = generateSimpleSteps(mode, distance, duration);
@@ -247,8 +256,7 @@ const fetchYandexRoute = async (from, to, mode) => {
         arrivalTime: null,
         steps: steps,
         isRealRoute: true,
-        apiSource: 'Yandex Matrix API',
-        // Для совместимости с UI добавляем alternatives с одним вариантом
+        apiSource: 'OSRM',
         alternatives: [{
             id: '0',
             distance: distance,
@@ -263,7 +271,7 @@ const fetchYandexRoute = async (from, to, mode) => {
 
 /**
  * Генерация простых шагов маршрута для отображения
- * Используется когда у нас есть только время и расстояние от Matrix API
+ * Используется когда у нас есть только время и расстояние
  * @param {string} mode - Режим транспорта
  * @param {string} distance - Расстояние в км
  * @param {number} duration - Время в минутах
