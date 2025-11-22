@@ -86,21 +86,30 @@ export default function CustomLessonsScreen({ navigation }) {
   };
 
   const handleDeleteLesson = async (id) => {
-    Alert.alert(
-      'Удалить занятие?',
-      'Это действие нельзя отменить',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteCustomLesson(id);
-            await loadLessons();
+    // Используем нативное подтверждение для веб-совместимости
+    if (typeof window !== 'undefined' && window.confirm) {
+      if (window.confirm('Удалить занятие? Это действие нельзя отменить')) {
+        await deleteCustomLesson(id);
+        await loadLessons();
+        Alert.alert('Успех', 'Занятие удалено');
+      }
+    } else {
+      Alert.alert(
+        'Удалить занятие?',
+        'Это действие нельзя отменить',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          {
+            text: 'Удалить',
+            style: 'destructive',
+            onPress: async () => {
+              await deleteCustomLesson(id);
+              await loadLessons();
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const getDayName = (dayNumber) => {

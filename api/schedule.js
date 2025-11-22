@@ -205,7 +205,8 @@ export const parseSchedule = (rawSchedule) => {
                 // (они одинаковые для всех групп, но на самом деле разные)
                 const subjectLower = subjectName.toLowerCase();
                 if (subjectLower.includes('проектная деятельность') ||
-                    subjectLower.includes('физическая культура')) {
+                    subjectLower.includes('физическая культура') ||
+                    subjectLower.includes('общая физическая подготовка')) {
                     return; // Пропускаем это занятие
                 }
 

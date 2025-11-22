@@ -31,10 +31,10 @@ export default function SettingsScreen({ navigation }) {
     const [homeAddress, setHomeAddress] = useState('');
     const [groupNumber, setGroupNumber] = useState('');
     const [campusAddresses, setCampusAddresses] = useState([
-        { code: 'пр', name: 'Прянишникова', address: '' },
-        { code: 'пк', name: 'Павла Корчагина', address: '' },
-        { code: 'ав', name: 'Автозаводская', address: '' },
-        { code: 'бс', name: 'Большая Семеновская', address: '' },
+        { code: 'пр', name: 'Прянишникова', address: '', duration: '' },
+        { code: 'пк', name: 'Павла Корчагина', address: '', duration: '' },
+        { code: 'ав', name: 'Автозаводская', address: '', duration: '' },
+        { code: 'бс', name: 'Большая Семеновская', address: '', duration: '' },
     ]);
     const [customRouteDuration, setCustomRouteDuration] = useState(''); // Ручной ввод времени (минуты)
     const [transportType, setTransportType] = useState('public'); // public, car, walk
@@ -68,14 +68,19 @@ export default function SettingsScreen({ navigation }) {
 
             // Поддержка старого формата (universityAddress) и нового (campusAddresses)
             if (savedSettings.campusAddresses && Array.isArray(savedSettings.campusAddresses)) {
-                setCampusAddresses(savedSettings.campusAddresses);
+                // Добавляем duration если его нет (миграция)
+                const migratedCampuses = savedSettings.campusAddresses.map(campus => ({
+                    ...campus,
+                    duration: campus.duration || ''
+                }));
+                setCampusAddresses(migratedCampuses);
             } else if (savedSettings.universityAddress) {
                 // Миграция: старый адрес становится корпусом "пр" (по умолчанию)
                 const migrated = [
-                    { code: 'пр', name: 'Прянишникова', address: savedSettings.universityAddress },
-                    { code: 'пк', name: 'Павла Корчагина', address: '' },
-                    { code: 'ав', name: 'Автозаводская', address: '' },
-                    { code: 'бс', name: 'Большая Семеновская', address: '' },
+                    { code: 'пр', name: 'Прянишникова', address: savedSettings.universityAddress, duration: '' },
+                    { code: 'пк', name: 'Павла Корчагина', address: '', duration: '' },
+                    { code: 'ав', name: 'Автозаводская', address: '', duration: '' },
+                    { code: 'бс', name: 'Большая Семеновская', address: '', duration: '' },
                 ];
                 setCampusAddresses(migrated);
             }
@@ -232,7 +237,7 @@ export default function SettingsScreen({ navigation }) {
 
                 <Text style={[styles.label, styles.labelMarginTop]}>Корпуса университета</Text>
                 <Text style={styles.helperText}>
-                    Укажите адреса корпусов, в которых у вас проходят занятия
+                    Укажите адреса корпусов и время в пути до них
                 </Text>
 
                 {campusAddresses.map((campus, index) => (
@@ -251,6 +256,22 @@ export default function SettingsScreen({ navigation }) {
                                 placeholder="Адрес корпуса"
                                 placeholderTextColor="#999"
                             />
+                            <View style={styles.campusDurationContainer}>
+                                <TextInput
+                                    style={styles.campusDurationInput}
+                                    value={campus.duration}
+                                    onChangeText={(text) => {
+                                        const updated = [...campusAddresses];
+                                        updated[index].duration = text;
+                                        setCampusAddresses(updated);
+                                    }}
+                                    placeholder="60"
+                                    keyboardType="numeric"
+                                    maxLength={3}
+                                    placeholderTextColor="#999"
+                                />
+                                <Text style={styles.campusDurationLabel}>мин</Text>
+                            </View>
                         </View>
                     </View>
                 ))}
@@ -608,6 +629,26 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: '#e0e0e0',
+        marginBottom: 8,
+    },
+    campusDurationContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f5f5f5',
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+    },
+    campusDurationInput: {
+        flex: 1,
+        fontSize: 14,
+        color: '#333',
+        padding: 0,
+    },
+    campusDurationLabel: {
+        fontSize: 14,
+        color: '#666',
+        marginLeft: 8,
     },
     // Кнопка для перехода к управлению пользовательскими занятиями
     customLessonsButton: {
