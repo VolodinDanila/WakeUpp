@@ -175,10 +175,10 @@ export const parseSchedule = (rawSchedule) => {
                         return;
                     }
 
-                    // Если модуль еще не начался, также можно пропустить (опционально)
-                    // if (now < dateFrom) {
-                    //     return;
-                    // }
+                    // Если модуль еще не начался, также пропускаем
+                    if (now < dateFrom) {
+                        return;
+                    }
                 }
 
                 // Извлекаем аудиторию из массива auditories или shortRooms
