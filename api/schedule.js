@@ -105,38 +105,62 @@ export const fetchScheduleFromUniversity = async (groupNumber) => {
  */
 export const parseSchedule = (rawSchedule) => {
     if (!rawSchedule || !rawSchedule.grid) {
-        return [];
+        console.log('⚠️ Нет данных grid в расписании');
+        return {};
     }
 
     const parsedSchedule = {};
+
+    console.log('🔍 Структура данных grid:', Object.keys(rawSchedule.grid));
 
     // Проходим по всем дням в расписании
     Object.keys(rawSchedule.grid).forEach(dayKey => {
         const dayData = rawSchedule.grid[dayKey];
 
-        if (!dayData || dayData.length === 0) {
+        // Проверяем что dayData существует
+        if (!dayData) {
             parsedSchedule[dayKey] = [];
             return;
         }
 
-        // Парсим занятия для этого дня
-        parsedSchedule[dayKey] = dayData.map((lesson, index) => {
-            // Извлекаем информацию о занятии
-            const subject = lesson.sbj || 'Неизвестный предмет';
-            const type = lesson.type || 'Занятие';
-            const teacher = lesson.teacher || 'Преподаватель не указан';
-            const room = lesson.aud || 'Аудитория не указана';
-            const time = lesson.time || '';
+        // Если это не массив, а строка или другой тип - пропускаем
+        if (typeof dayData === 'string' || !dayData) {
+            console.log(`⚠️ День ${dayKey}: неожиданный тип данных -`, typeof dayData);
+            parsedSchedule[dayKey] = [];
+            return;
+        }
 
-            return {
-                id: `${dayKey}-${index}`,
-                time: time,
-                subject: subject,
-                type: type,
-                room: room,
-                professor: teacher,
-            };
-        });
+        // Если это пустой массив или объект
+        if (Array.isArray(dayData) && dayData.length === 0) {
+            parsedSchedule[dayKey] = [];
+            return;
+        }
+
+        // Если это не массив, возможно это объект с занятиями
+        const lessonsArray = Array.isArray(dayData) ? dayData : Object.values(dayData);
+
+        // Парсим занятия для этого дня
+        parsedSchedule[dayKey] = lessonsArray
+            .filter(lesson => lesson && typeof lesson === 'object') // Фильтруем невалидные данные
+            .map((lesson, index) => {
+                // Извлекаем информацию о занятии
+                const subject = lesson.sbj || lesson.subject || 'Неизвестный предмет';
+                const type = lesson.type || 'Занятие';
+                const teacher = lesson.teacher || lesson.prepod || 'Преподаватель не указан';
+                const room = lesson.aud || lesson.auditoria || 'Аудитория не указана';
+                const time = lesson.time || lesson.time_start || '';
+
+                return {
+                    id: `${dayKey}-${index}`,
+                    time: time,
+                    subject: subject,
+                    type: type,
+                    room: room,
+                    professor: teacher,
+                };
+            });
+
+        console.log(`✅ День ${dayKey}: ${parsedSchedule[dayKey].length} занятий`);
     });
 
     return parsedSchedule;

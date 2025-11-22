@@ -116,6 +116,10 @@ export default function RouteScreen() {
       routeResult.departureTime = formatTime(departure);
       routeResult.arrivalTime = formatTime(arrival);
 
+      // Добавляем адреса для отображения
+      routeResult.fromAddress = settings.homeAddress;
+      routeResult.toAddress = settings.universityAddress;
+
       setRouteData(routeResult);
       setTrafficLevel(traffic.level);
 
@@ -246,6 +250,30 @@ export default function RouteScreen() {
 
   return (
     <ScrollView style={styles.container}>
+      {/* Адреса маршрута */}
+      {routeData && (
+        <View style={styles.addressCard}>
+          <Text style={styles.addressTitle}>Маршрут</Text>
+          <View style={styles.addressItem}>
+            <Text style={styles.addressIcon}>🏠</Text>
+            <View style={styles.addressTextContainer}>
+              <Text style={styles.addressLabel}>Откуда:</Text>
+              <Text style={styles.addressText}>{routeData.fromAddress || 'Домашний адрес'}</Text>
+            </View>
+          </View>
+          <View style={styles.addressArrow}>
+            <Text style={styles.arrowText}>↓</Text>
+          </View>
+          <View style={styles.addressItem}>
+            <Text style={styles.addressIcon}>🎓</Text>
+            <View style={styles.addressTextContainer}>
+              <Text style={styles.addressLabel}>Куда:</Text>
+              <Text style={styles.addressText}>{routeData.toAddress || 'Университет'}</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Основная информация о маршруте */}
       <View style={styles.summaryCard}>
         <View style={styles.timeContainer}>
@@ -327,6 +355,55 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  // Карточка адресов
+  addressCard: {
+    backgroundColor: '#fff',
+    margin: 15,
+    marginBottom: 10,
+    padding: 20,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addressTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 15,
+  },
+  addressItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  addressIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  addressTextContainer: {
+    flex: 1,
+  },
+  addressLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 3,
+  },
+  addressText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+  },
+  addressArrow: {
+    alignItems: 'center',
+    marginVertical: 5,
+  },
+  arrowText: {
+    fontSize: 20,
+    color: '#007AFF',
   },
   // Индикатор загрузки
   loadingContainer: {
