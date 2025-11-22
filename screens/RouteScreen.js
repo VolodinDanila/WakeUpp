@@ -25,7 +25,6 @@ import {
   buildRoute,
   getTrafficInfo,
   getMockRouteData,
-  isRoutesApiConfigured,
 } from '../api/routes';
 
 export default function RouteScreen() {
@@ -87,19 +86,21 @@ export default function RouteScreen() {
 
       let routeResult;
 
-      // Проверяем, настроен ли API
-      if (isRoutesApiConfigured()) {
-        // Строим реальный маршрут
+      // Пытаемся построить реальный маршрут
+      try {
         const mode = settings.transportType === 'car' ? 'auto' :
                      settings.transportType === 'walk' ? 'pedestrian' : 'transit';
 
+        console.log(`🗺️ Строю маршрут: ${settings.homeAddress} → ${settings.universityAddress}`);
         routeResult = await buildRoute(
           settings.homeAddress,
           settings.universityAddress,
           mode
         );
-      } else {
-        // Используем mock данные
+        console.log('✅ Маршрут успешно построен');
+      } catch (apiError) {
+        // Если API не работает, используем mock данные
+        console.log('⚠️ Используются mock данные маршрута:', apiError.message);
         routeResult = getMockRouteData();
       }
 
@@ -123,7 +124,7 @@ export default function RouteScreen() {
 
       setLoading(false);
     } catch (error) {
-      console.error('Ошибка загрузки маршрута:', error);
+      console.error('❌ Критическая ошибка загрузки маршрута:', error);
       setLoading(false);
       Alert.alert(
         'Ошибка',

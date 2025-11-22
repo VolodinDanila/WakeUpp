@@ -22,7 +22,6 @@ import {
   fetchWeatherByCity,
   getMockWeatherData,
   getWeatherRecommendations,
-  isWeatherApiConfigured,
 } from '../api/weather';
 import { getNextClass } from '../api/schedule';
 import { calculateAlarm, getTimeUntilAlarm } from '../utils/alarmCalculator';
@@ -131,13 +130,21 @@ export default function HomeScreen() {
     try {
       let weatherData;
 
-      // Проверяем, настроен ли API
-      if (isWeatherApiConfigured() && settings?.universityAddress) {
-        // Извлекаем город из адреса (первое слово обычно город)
-        const city = settings.universityAddress.split(',')[0].trim();
-        weatherData = await fetchWeatherByCity(city);
+      // Пытаемся загрузить реальную погоду
+      if (settings?.universityAddress) {
+        try {
+          // Извлекаем город из адреса (первое слово обычно город)
+          const city = settings.universityAddress.split(',')[0].trim();
+          console.log(`🌤️ Загружаю погоду для: ${city}`);
+          weatherData = await fetchWeatherByCity(city);
+        } catch (apiError) {
+          // Если API не работает, используем mock данные
+          console.log('⚠️ Используются mock данные погоды');
+          weatherData = getMockWeatherData();
+        }
       } else {
-        // Используем mock данные
+        // Нет адреса - используем mock данные
+        console.log('ℹ️ Адрес не указан, используются mock данные');
         weatherData = getMockWeatherData();
       }
 
@@ -148,7 +155,7 @@ export default function HomeScreen() {
       setRecommendations(weatherRecs);
 
     } catch (error) {
-      console.error('Ошибка загрузки погоды:', error);
+      console.error('❌ Критическая ошибка загрузки погоды:', error);
       // В случае ошибки используем mock данные
       const mockWeather = getMockWeatherData();
       setWeather(mockWeather);

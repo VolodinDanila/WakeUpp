@@ -8,7 +8,9 @@
  * 3. Добавьте ключ в настройки
  */
 
-const YANDEX_API_KEY = 'YOUR_YANDEX_API_KEY'; // Замените на реальный ключ
+// ВАЖНО: Замените на свой API ключ от Яндекс.Карт
+// Получите ключ на https://developer.tech.yandex.ru/
+const YANDEX_API_KEY = 'YOUR_YANDEX_API_KEY';
 const GEOCODER_URL = 'https://geocode-maps.yandex.ru/1.x/';
 
 /**
@@ -21,12 +23,22 @@ export const geocodeAddress = async (address) => {
         throw new Error('Не указан адрес');
     }
 
+    // Проверяем API ключ
+    if (!YANDEX_API_KEY || YANDEX_API_KEY === 'YOUR_YANDEX_API_KEY') {
+        console.log('⚠️ API ключ Яндекс.Карт не настроен');
+        throw new Error('API ключ не настроен');
+    }
+
     const url = `${GEOCODER_URL}?apikey=${YANDEX_API_KEY}&geocode=${encodeURIComponent(address)}&format=json`;
 
     try {
+        console.log(`🗺️ Геокодирую адрес: ${address}`);
         const response = await fetch(url);
 
         if (!response.ok) {
+            if (response.status === 403) {
+                throw new Error('Неверный API ключ Яндекс.Карт');
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
@@ -38,13 +50,14 @@ export const geocodeAddress = async (address) => {
         }
 
         const coords = geoObject.GeoObject.Point.pos.split(' ');
+        console.log('✅ Адрес успешно геокодирован');
         return {
             lon: parseFloat(coords[0]),
             lat: parseFloat(coords[1]),
             fullAddress: geoObject.GeoObject.metaDataProperty.GeocoderMetaData.text,
         };
     } catch (error) {
-        console.error('Ошибка геокодирования:', error);
+        console.error('❌ Ошибка геокодирования:', error.message);
         throw error;
     }
 };
@@ -290,7 +303,5 @@ export const getMockRouteData = () => {
 
 /**
  * Проверка, настроен ли API ключ
+ * (Удалено - теперь проверяем при запросе)
  */
-export const isRoutesApiConfigured = () => {
-    return YANDEX_API_KEY && YANDEX_API_KEY !== 'YOUR_YANDEX_API_KEY';
-};

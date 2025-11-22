@@ -90,32 +90,38 @@ export default function ScheduleScreen() {
   const loadSchedule = async (group) => {
     setLoading(true);
     try {
+      console.log(`📅 Начинаю загрузку расписания для группы: ${group}`);
+
       // Сначала пробуем загрузить из кэша
       const cachedSchedule = await loadScheduleCache();
       if (cachedSchedule) {
-        console.log('Расписание загружено из кэша');
+        console.log('✅ Расписание загружено из кэша');
         setFullSchedule(cachedSchedule);
         setLoading(false);
         return;
       }
 
       // Если кэша нет, загружаем с сервера
-      console.log('Загружаю расписание с сервера...');
+      console.log('🌐 Загружаю расписание с сервера rasp.dmami.ru...');
       const rawSchedule = await fetchScheduleFromUniversity(group);
+      console.log('📥 Получены данные:', rawSchedule);
+
       const parsed = parseSchedule(rawSchedule);
+      console.log('✅ Расписание распарсено:', Object.keys(parsed).length, 'дней');
 
       setFullSchedule(parsed);
 
       // Сохраняем в кэш
       await saveScheduleCache(parsed);
+      console.log('💾 Расписание сохранено в кэш');
 
       setLoading(false);
     } catch (error) {
-      console.error('Ошибка загрузки расписания:', error);
+      console.error('❌ Ошибка загрузки расписания:', error);
       setLoading(false);
       Alert.alert(
-        'Ошибка',
-        error.message || 'Не удалось загрузить расписание',
+        'Ошибка загрузки расписания',
+        error.message || 'Не удалось загрузить расписание. Проверьте номер группы.',
         [
           { text: 'Отмена', style: 'cancel' },
           { text: 'Повторить', onPress: () => loadSchedule(group) }

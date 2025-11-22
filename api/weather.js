@@ -8,9 +8,9 @@
  * 3. Добавьте ключ в настройки или в .env файл
  */
 
-// Для тестирования используется демо-ключ
-// В продакшене замените на свой ключ из настроек
-const API_KEY = 'YOUR_API_KEY_HERE'; // Замените на реальный ключ
+// ВАЖНО: Замените на свой API ключ от OpenWeatherMap
+// Получите бесплатный ключ на https://openweathermap.org/api
+const API_KEY = 'YOUR_API_KEY_HERE';
 const BASE_URL = 'https://api.openweathermap.org/data/2.5';
 
 /**
@@ -51,22 +51,33 @@ export const fetchWeatherByCity = async (city) => {
         throw new Error('Не указан город');
     }
 
+    // Проверяем, настроен ли API ключ
+    if (!API_KEY || API_KEY === 'YOUR_API_KEY_HERE') {
+        console.log('⚠️ API ключ погоды не настроен, используются mock данные');
+        throw new Error('API ключ не настроен');
+    }
+
     const url = `${BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric&lang=ru`;
 
     try {
+        console.log(`🌤️ Запрашиваю погоду для города: ${city}`);
         const response = await fetch(url);
 
         if (!response.ok) {
             if (response.status === 404) {
                 throw new Error('Город не найден');
             }
+            if (response.status === 401) {
+                throw new Error('Неверный API ключ');
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
+        console.log('✅ Погода успешно загружена');
         return parseWeatherData(data);
     } catch (error) {
-        console.error('Ошибка получения погоды:', error);
+        console.error('❌ Ошибка получения погоды:', error.message);
         throw error;
     }
 };
@@ -208,7 +219,5 @@ export const getMockWeatherData = () => {
 
 /**
  * Проверка, настроен ли API ключ
+ * (Удалено - теперь проверяем при запросе)
  */
-export const isWeatherApiConfigured = () => {
-    return API_KEY && API_KEY !== 'YOUR_API_KEY_HERE';
-};
