@@ -199,10 +199,20 @@ export const parseSchedule = (rawSchedule) => {
                     ? lesson.teacher
                     : 'Преподаватель не указан';
 
+                const subjectName = lesson.sbj || 'Неизвестный предмет';
+
+                // Фильтруем занятия, которые пользователь добавляет вручную
+                // (они одинаковые для всех групп, но на самом деле разные)
+                const subjectLower = subjectName.toLowerCase();
+                if (subjectLower.includes('проектная деятельность') ||
+                    subjectLower.includes('физическая культура')) {
+                    return; // Пропускаем это занятие
+                }
+
                 const parsedLesson = {
                     id: `${dayKey}-${lessonNumber}-${slotIndex}`,
                     time: time,
-                    subject: lesson.sbj || 'Неизвестный предмет',
+                    subject: subjectName,
                     type: lesson.type || 'Занятие',
                     room: room,
                     professor: teacher,
@@ -342,4 +352,58 @@ export const getScheduleForToday = async (groupNumber) => {
         console.error('❌ Ошибка загрузки расписания на сегодня:', error);
         return [];
     }
+};
+
+/**
+ * Объединяет базовое расписание с пользовательскими занятиями
+ * @param {Object} parsedSchedule - Распарсенное расписание из университета
+ * @param {Array} customLessons - Массив пользовательских занятий
+ * @returns {Object} Объединенное расписание
+ */
+export const mergeWithCustomLessons = (parsedSchedule, customLessons) => {
+    if (!customLessons || customLessons.length === 0) {
+        return parsedSchedule;
+    }
+
+    const merged = { ...parsedSchedule };
+
+    // Добавляем пользовательские занятия к соответствующим дням
+    customLessons.forEach(lesson => {
+        const dayNumber = lesson.dayNumber;
+
+        if (!merged[dayNumber]) {
+            merged[dayNumber] = [];
+        }
+
+        // Добавляем метку что это пользовательское занятие
+        const customLesson = {
+            ...lesson,
+            isCustom: true,
+        };
+
+        merged[dayNumber].push(customLesson);
+    });
+
+    // Сортируем занятия в каждом дне по времени
+    Object.keys(merged).forEach(dayKey => {
+        merged[dayKey].sort((a, b) => {
+            const timeA = a.lessonNumber || parseTimeToMinutes(a.time);
+            const timeB = b.lessonNumber || parseTimeToMinutes(b.time);
+            return timeA - timeB;
+        });
+    });
+
+    return merged;
+};
+
+/**
+ * Вспомогательная функция: преобразование времени в минуты для сортировки
+ * @param {string} timeStr - Строка времени "09:00" или "09:00-10:30"
+ * @returns {number} Минуты с начала дня
+ */
+const parseTimeToMinutes = (timeStr) => {
+    if (!timeStr) return 0;
+    const match = timeStr.match(/(\d{1,2}):(\d{2})/);
+    if (!match) return 0;
+    return parseInt(match[1]) * 60 + parseInt(match[2]);
 };

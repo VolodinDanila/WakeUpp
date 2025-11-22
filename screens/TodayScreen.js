@@ -14,9 +14,8 @@ import {
   Linking,
   RefreshControl,
 } from 'react-native';
-import { loadSettings } from '../utils/storage';
-import { loadReminders } from '../utils/storage';
-import { getScheduleForToday } from '../api/schedule';
+import { loadSettings, loadReminders, loadCustomLessons } from '../utils/storage';
+import { getScheduleForToday, parseSchedule, fetchScheduleFromUniversity, mergeWithCustomLessons } from '../api/schedule';
 import { extractCampusCode, getCampusAddress } from '../utils/campusHelper';
 
 export default function TodayScreen() {
@@ -38,7 +37,22 @@ export default function TodayScreen() {
 
       // Загружаем расписание на сегодня
       if (settingsData.groupNumber) {
-        const todaySchedule = await getScheduleForToday(settingsData.groupNumber);
+        // Загружаем базовое расписание
+        const rawSchedule = await fetchScheduleFromUniversity(settingsData.groupNumber);
+        const parsedSchedule = parseSchedule(rawSchedule);
+
+        // Загружаем пользовательские занятия
+        const customLessons = await loadCustomLessons();
+
+        // Объединяем расписание с пользовательскими занятиями
+        const mergedSchedule = mergeWithCustomLessons(parsedSchedule, customLessons);
+
+        // Получаем расписание на сегодня
+        const now = new Date();
+        const currentDay = now.getDay(); // 0 = воскресенье, 1 = понедельник
+        const normalizedDay = currentDay === 0 ? 7 : currentDay; // 1-6 для пн-сб
+        const todaySchedule = mergedSchedule[normalizedDay] || [];
+
         setSchedule(todaySchedule);
       }
 

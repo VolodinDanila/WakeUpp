@@ -20,11 +20,12 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { loadSettings, saveScheduleCache, loadScheduleCache, clearScheduleCache } from '../utils/storage';
+import { loadSettings, saveScheduleCache, loadScheduleCache, clearScheduleCache, loadCustomLessons } from '../utils/storage';
 import {
   fetchScheduleFromUniversity,
   parseSchedule,
-  getScheduleForDay
+  getScheduleForDay,
+  mergeWithCustomLessons
 } from '../api/schedule';
 
 export default function ScheduleScreen() {
@@ -96,7 +97,12 @@ export default function ScheduleScreen() {
       const cachedSchedule = await loadScheduleCache();
       if (cachedSchedule) {
         console.log('✅ Расписание загружено из кэша');
-        setFullSchedule(cachedSchedule);
+
+        // Объединяем с пользовательскими занятиями
+        const customLessons = await loadCustomLessons();
+        const mergedSchedule = mergeWithCustomLessons(cachedSchedule, customLessons);
+
+        setFullSchedule(mergedSchedule);
         setLoading(false);
         return;
       }
@@ -109,9 +115,14 @@ export default function ScheduleScreen() {
       const parsed = parseSchedule(rawSchedule);
       console.log('✅ Расписание распарсено:', Object.keys(parsed).length, 'дней');
 
-      setFullSchedule(parsed);
+      // Загружаем пользовательские занятия и объединяем
+      const customLessons = await loadCustomLessons();
+      const mergedSchedule = mergeWithCustomLessons(parsed, customLessons);
+      console.log('✅ Добавлено пользовательских занятий:', customLessons.length);
 
-      // Сохраняем в кэш
+      setFullSchedule(mergedSchedule);
+
+      // Сохраняем в кэш (без пользовательских занятий, они загрузятся отдельно)
       await saveScheduleCache(parsed);
       console.log('💾 Расписание сохранено в кэш');
 

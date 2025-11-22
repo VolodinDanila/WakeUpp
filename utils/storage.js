@@ -11,6 +11,7 @@ const KEYS = {
     SCHEDULE: 'cached_schedule',
     LAST_ROUTE: 'last_route_data',
     REMINDERS: 'app_reminders',
+    CUSTOM_LESSONS: 'custom_lessons', // Пользовательские занятия
 };
 
 /**
@@ -237,6 +238,105 @@ export const deleteReminder = async (id) => {
         return true;
     } catch (error) {
         console.error('❌ Ошибка удаления напоминания:', error);
+        return false;
+    }
+};
+
+/**
+ * Загрузка пользовательских занятий
+ * @returns {Promise<Array>} Массив занятий
+ */
+export const loadCustomLessons = async () => {
+    try {
+        const data = await AsyncStorage.getItem(KEYS.CUSTOM_LESSONS);
+        if (data) {
+            const lessons = JSON.parse(data);
+            console.log(`✅ Загружено пользовательских занятий: ${lessons.length}`);
+            return lessons;
+        }
+        return [];
+    } catch (error) {
+        console.error('❌ Ошибка загрузки пользовательских занятий:', error);
+        return [];
+    }
+};
+
+/**
+ * Сохранение пользовательских занятий
+ * @param {Array} lessons - Массив занятий
+ */
+export const saveCustomLessons = async (lessons) => {
+    try {
+        await AsyncStorage.setItem(KEYS.CUSTOM_LESSONS, JSON.stringify(lessons));
+        console.log(`✅ Сохранено пользовательских занятий: ${lessons.length}`);
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка сохранения пользовательских занятий:', error);
+        return false;
+    }
+};
+
+/**
+ * Добавление пользовательского занятия
+ * @param {Object} lesson - Данные занятия (dayNumber, time, subject, type, room)
+ */
+export const addCustomLesson = async (lesson) => {
+    try {
+        const lessons = await loadCustomLessons();
+        const newLesson = {
+            ...lesson,
+            id: Date.now().toString(),
+            createdAt: new Date().toISOString(),
+        };
+        lessons.push(newLesson);
+        await saveCustomLessons(lessons);
+        console.log('✅ Пользовательское занятие добавлено:', newLesson.subject);
+        return newLesson;
+    } catch (error) {
+        console.error('❌ Ошибка добавления занятия:', error);
+        return null;
+    }
+};
+
+/**
+ * Обновление пользовательского занятия
+ * @param {string} id - ID занятия
+ * @param {Object} updates - Обновленные данные
+ */
+export const updateCustomLesson = async (id, updates) => {
+    try {
+        const lessons = await loadCustomLessons();
+        const index = lessons.findIndex(l => l.id === id);
+        if (index !== -1) {
+            lessons[index] = {
+                ...lessons[index],
+                ...updates,
+                updatedAt: new Date().toISOString(),
+            };
+            await saveCustomLessons(lessons);
+            console.log('✅ Занятие обновлено:', lessons[index].subject);
+            return lessons[index];
+        }
+        return null;
+    } catch (error) {
+        console.error('❌ Ошибка обновления занятия:', error);
+        return null;
+    }
+};
+
+/**
+ * Удаление пользовательского занятия
+ * @param {string} id - ID занятия
+ */
+export const deleteCustomLesson = async (id) => {
+    try {
+        const lessons = await loadCustomLessons();
+        const filtered = lessons.filter(l => l.id !== id);
+        await saveCustomLessons(filtered);
+        console.log('✅ Занятие удалено');
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка удаления занятия:', error);
         return false;
     }
 };

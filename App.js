@@ -18,10 +18,12 @@ import SettingsScreen from './screens/SettingsScreen';
 import TodayScreen from './screens/TodayScreen';
 import RemindersScreen from './screens/RemindersScreen';
 import AddReminderScreen from './screens/AddReminderScreen';
+import CustomLessonsScreen from './screens/CustomLessonsScreen';
 
 // Создание навигаторов
 const Tab = createBottomTabNavigator();
 const RemindersStack = createStackNavigator();
+const SettingsStack = createStackNavigator();
 
 /**
  * Стек навигации для напоминаний
@@ -49,6 +51,35 @@ function RemindersStackScreen() {
         }}
       />
     </RemindersStack.Navigator>
+  );
+}
+
+/**
+ * Стек навигации для настроек
+ * Содержит основные настройки и управление пользовательскими занятиями
+ */
+function SettingsStackScreen() {
+  return (
+    <SettingsStack.Navigator>
+      <SettingsStack.Screen
+        name="SettingsMain"
+        component={SettingsScreen}
+        options={{
+          title: 'Настройки',
+          headerStyle: styles.header,
+          headerTintColor: '#fff',
+        }}
+      />
+      <SettingsStack.Screen
+        name="CustomLessons"
+        component={CustomLessonsScreen}
+        options={{
+          title: 'Мои занятия',
+          headerStyle: styles.header,
+          headerTintColor: '#fff',
+        }}
+      />
+    </SettingsStack.Navigator>
   );
 }
 
@@ -108,11 +139,12 @@ export default function App() {
         />
         
         {/* Экран настроек (время рутины, адрес и т.д.) */}
-        <Tab.Screen 
-          name="Настройки" 
-          component={SettingsScreen}
+        <Tab.Screen
+          name="Настройки"
+          component={SettingsStackScreen}
           options={{
             tabBarLabel: 'Настройки',
+            headerShown: false, // Заголовок показывает внутренний стек
           }}
         />
       </Tab.Navigator>

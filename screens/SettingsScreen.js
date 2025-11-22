@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import { saveSettings, loadSettings } from '../utils/storage';
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ navigation }) {
     // Состояния для настроек
     const [morningRoutine, setMorningRoutine] = useState('60'); // Время в минутах
     const [homeAddress, setHomeAddress] = useState('');
@@ -270,6 +270,16 @@ export default function SettingsScreen() {
                 <Text style={styles.helperText}>
                     Введите номер вашей группы для автоматической загрузки расписания
                 </Text>
+
+                <TouchableOpacity
+                    style={styles.customLessonsButton}
+                    onPress={() => navigation.navigate('CustomLessons')}
+                >
+                    <Text style={styles.customLessonsButtonText}>
+                        📝 Мои занятия (Проектная деятельность, Физкультура)
+                    </Text>
+                    <Text style={styles.customLessonsButtonArrow}>›</Text>
+                </TouchableOpacity>
             </View>
             {/* Секция выбора транспорта */}
             <View style={styles.section}>
@@ -598,5 +608,31 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: '#e0e0e0',
+    },
+    // Кнопка для перехода к управлению пользовательскими занятиями
+    customLessonsButton: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#007AFF',
+        padding: 16,
+        borderRadius: 12,
+        marginTop: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    customLessonsButtonText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#fff',
+        flex: 1,
+    },
+    customLessonsButtonArrow: {
+        fontSize: 24,
+        color: '#fff',
+        fontWeight: 'bold',
     },
 });
