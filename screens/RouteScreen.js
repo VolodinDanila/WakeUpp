@@ -23,6 +23,8 @@ import {
   buildRoute,
   getMockRouteData,
 } from '../api/routes';
+import { getScheduleForToday } from '../api/schedule';
+import { getNextCampus, getCampusAddress } from '../utils/campusHelper';
 
 export default function RouteScreen() {
   // Состояния компонента
@@ -73,30 +75,92 @@ export default function RouteScreen() {
     try {
       const settings = settingsData || await loadSettings();
 
-      if (!settings || !settings.homeAddress || !settings.universityAddress) {
+      if (!settings || !settings.homeAddress) {
         setRouteData(null);
         setLoading(false);
         return;
       }
 
+      // Проверяем что есть хотя бы один корпус
+      const hasCampusAddresses = settings.campusAddresses && settings.campusAddresses.some(c => c.address.trim());
+      if (!hasCampusAddresses) {
+        Alert.alert('Ошибка', 'Укажите адреса корпусов в настройках');
+        setRouteData(null);
+        setLoading(false);
+        return;
+      }
+
+      let destinationAddress = null;
+      let campusName = 'Университет';
+
+      // Определяем корпус по расписанию
+      if (settings.groupNumber) {
+        try {
+          console.log('📅 Загружаю расписание для определения корпуса...');
+          const schedule = await getScheduleForToday(settings.groupNumber);
+
+          if (schedule && schedule.length > 0) {
+            const campusCode = getNextCampus(schedule);
+
+            if (campusCode) {
+              destinationAddress = getCampusAddress(campusCode, settings.campusAddresses);
+
+              if (destinationAddress) {
+                const campus = settings.campusAddresses.find(c => c.code === campusCode);
+                campusName = campus ? `Корпус ${campus.name}` : 'Университет';
+                console.log(`✅ Маршрут будет построен к корпусу: ${campusName} (${campusCode})`);
+              }
+            }
+          }
+        } catch (scheduleError) {
+          console.log('⚠️ Не удалось загрузить расписание:', scheduleError.message);
+        }
+      }
+
+      // Если не удалось определить корпус, берем первый доступный
+      if (!destinationAddress) {
+        const firstCampus = settings.campusAddresses.find(c => c.address.trim());
+        if (firstCampus) {
+          destinationAddress = firstCampus.address;
+          campusName = `Корпус ${firstCampus.name}`;
+          console.log(`📍 Используется первый доступный корпус: ${campusName}`);
+        }
+      }
+
       let routeResult;
 
-      // Пытаемся построить реальный маршрут
-      try {
-        const mode = settings.transportType === 'car' ? 'auto' :
-                     settings.transportType === 'walk' ? 'pedestrian' : 'transit';
+      // Если указано ручное время, используем его
+      if (settings.customRouteDuration && parseInt(settings.customRouteDuration) > 0) {
+        const customDuration = parseInt(settings.customRouteDuration);
+        console.log(`⏱️ Используется ручное время маршрута: ${customDuration} мин`);
 
-        console.log(`🗺️ Строю маршрут: ${settings.homeAddress} → ${settings.universityAddress}`);
-        routeResult = await buildRoute(
-          settings.homeAddress,
-          settings.universityAddress,
-          mode
-        );
-        console.log('✅ Маршрут успешно построен');
-      } catch (apiError) {
-        // Если API не работает, используем mock данные
-        console.log('⚠️ Используются mock данные маршрута:', apiError.message);
-        routeResult = getMockRouteData();
+        routeResult = {
+          distance: '—', // Не знаем расстояние
+          duration: customDuration,
+          mode: settings.transportType || 'transit',
+          departureTime: null,
+          arrivalTime: null,
+          steps: [],
+          isCustomTime: true,
+        };
+      } else {
+        // Пытаемся построить маршрут через API
+        try {
+          const mode = settings.transportType === 'car' ? 'auto' :
+                       settings.transportType === 'walk' ? 'pedestrian' : 'transit';
+
+          console.log(`🗺️ Строю маршрут: ${settings.homeAddress} → ${destinationAddress}`);
+          routeResult = await buildRoute(
+            settings.homeAddress,
+            destinationAddress,
+            mode
+          );
+          console.log('✅ Маршрут успешно построен');
+        } catch (apiError) {
+          // Если API не работает, используем mock данные
+          console.log('⚠️ Используются mock данные маршрута:', apiError.message);
+          routeResult = getMockRouteData();
+        }
       }
 
       // Расчет времени выезда и прибытия
@@ -109,7 +173,8 @@ export default function RouteScreen() {
 
       // Добавляем адреса для отображения
       routeResult.fromAddress = settings.homeAddress;
-      routeResult.toAddress = settings.universityAddress;
+      routeResult.toAddress = destinationAddress;
+      routeResult.campusName = campusName;
 
       console.log('📊 Итоговые данные маршрута:');
       console.log('   Адреса:', {
@@ -207,7 +272,10 @@ export default function RouteScreen() {
             <Text style={styles.addressIcon}>🎓</Text>
             <View style={styles.addressTextContainer}>
               <Text style={styles.addressLabel}>Куда:</Text>
-              <Text style={styles.addressText}>{routeData.toAddress || 'Университет'}</Text>
+              <Text style={styles.addressText}>{routeData.campusName || 'Университет'}</Text>
+              {routeData.toAddress && (
+                <Text style={styles.addressSubtext}>{routeData.toAddress}</Text>
+              )}
             </View>
           </View>
         </View>
@@ -216,7 +284,14 @@ export default function RouteScreen() {
       {/* Основная информация о маршруте */}
       <View style={styles.summaryCard}>
         {/* Индикатор типа маршрута */}
-        {routeData.isRealRoute && (
+        {routeData.isCustomTime && (
+          <View style={styles.routeTypeBadge}>
+            <Text style={styles.routeTypeBadgeText}>
+              ⏱️ Ручной ввод времени
+            </Text>
+          </View>
+        )}
+        {!routeData.isCustomTime && routeData.isRealRoute && (
           <View style={styles.routeTypeBadge}>
             <Text style={styles.routeTypeBadgeText}>
               ✓ Реальный маршрут
@@ -334,6 +409,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     lineHeight: 20,
+  },
+  addressSubtext: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
+    lineHeight: 16,
   },
   addressArrow: {
     alignItems: 'center',

@@ -30,7 +30,13 @@ export default function SettingsScreen() {
     const [morningRoutine, setMorningRoutine] = useState('60'); // Время в минутах
     const [homeAddress, setHomeAddress] = useState('');
     const [groupNumber, setGroupNumber] = useState('');
-    const [universityAddress, setUniversityAddress] = useState('');
+    const [campusAddresses, setCampusAddresses] = useState([
+        { code: 'пр', name: 'Прянишникова', address: '' },
+        { code: 'пк', name: 'Павла Корчагина', address: '' },
+        { code: 'ав', name: 'Автозаводская', address: '' },
+        { code: 'бс', name: 'Большая Семеновская', address: '' },
+    ]);
+    const [customRouteDuration, setCustomRouteDuration] = useState(''); // Ручной ввод времени (минуты)
     const [transportType, setTransportType] = useState('public'); // public, car, walk
     const [extraTime, setExtraTime] = useState('10'); // Дополнительное время запаса
     const [weatherNotifications, setWeatherNotifications] = useState(true);
@@ -59,7 +65,22 @@ export default function SettingsScreen() {
             setMorningRoutine(savedSettings.morningRoutine || '60');
             setHomeAddress(savedSettings.homeAddress || '');
             setGroupNumber(savedSettings.groupNumber || '');
-            setUniversityAddress(savedSettings.universityAddress || '');
+
+            // Поддержка старого формата (universityAddress) и нового (campusAddresses)
+            if (savedSettings.campusAddresses && Array.isArray(savedSettings.campusAddresses)) {
+                setCampusAddresses(savedSettings.campusAddresses);
+            } else if (savedSettings.universityAddress) {
+                // Миграция: старый адрес становится корпусом "пр" (по умолчанию)
+                const migrated = [
+                    { code: 'пр', name: 'Прянишникова', address: savedSettings.universityAddress },
+                    { code: 'пк', name: 'Павла Корчагина', address: '' },
+                    { code: 'ав', name: 'Автозаводская', address: '' },
+                    { code: 'бс', name: 'Большая Семеновская', address: '' },
+                ];
+                setCampusAddresses(migrated);
+            }
+
+            setCustomRouteDuration(savedSettings.customRouteDuration || '');
             setTransportType(savedSettings.transportType || 'public');
             setExtraTime(savedSettings.extraTime || '10');
             setWeatherNotifications(savedSettings.weatherNotifications ?? true);
@@ -83,8 +104,10 @@ export default function SettingsScreen() {
             return;
         }
 
-        if (!universityAddress.trim()) {
-            Alert.alert('Ошибка', 'Укажите адрес университета');
+        // Проверяем что хотя бы один корпус заполнен
+        const hasAnyCampus = campusAddresses.some(campus => campus.address.trim());
+        if (!hasAnyCampus) {
+            Alert.alert('Ошибка', 'Укажите адрес хотя бы одного корпуса университета');
             return;
         }
 
@@ -98,6 +121,12 @@ export default function SettingsScreen() {
             return;
         }
 
+        // Валидация ручного времени маршрута (если указано)
+        if (customRouteDuration && (isNaN(customRouteDuration) || parseInt(customRouteDuration) < 1)) {
+            Alert.alert('Ошибка', 'Укажите корректное время маршрута (минимум 1 минута)');
+            return;
+        }
+
         setSaving(true);
 
         // Объект с настройками
@@ -105,7 +134,8 @@ export default function SettingsScreen() {
             morningRoutine,
             homeAddress,
             groupNumber,
-            universityAddress,
+            campusAddresses,
+            customRouteDuration,
             transportType,
             extraTime,
             weatherNotifications,
@@ -200,14 +230,30 @@ export default function SettingsScreen() {
                     placeholderTextColor="#999"
                 />
 
-                <Text style={[styles.label, styles.labelMarginTop]}>Адрес университета</Text>
-                <TextInput
-                    style={styles.textInput}
-                    value={universityAddress}
-                    onChangeText={setUniversityAddress}
-                    placeholder="Например: Москва, пр. Мира, д. 101"
-                    placeholderTextColor="#999"
-                />
+                <Text style={[styles.label, styles.labelMarginTop]}>Корпуса университета</Text>
+                <Text style={styles.helperText}>
+                    Укажите адреса корпусов, в которых у вас проходят занятия
+                </Text>
+
+                {campusAddresses.map((campus, index) => (
+                    <View key={campus.code} style={styles.campusInputContainer}>
+                        <Text style={styles.campusCode}>{campus.code.toUpperCase()}</Text>
+                        <View style={styles.campusTextInputContainer}>
+                            <Text style={styles.campusName}>{campus.name}</Text>
+                            <TextInput
+                                style={styles.campusTextInput}
+                                value={campus.address}
+                                onChangeText={(text) => {
+                                    const updated = [...campusAddresses];
+                                    updated[index].address = text;
+                                    setCampusAddresses(updated);
+                                }}
+                                placeholder="Адрес корпуса"
+                                placeholderTextColor="#999"
+                            />
+                        </View>
+                    </View>
+                ))}
             </View>
             {/* Секция номера группы */}
             <View style={styles.section}>
@@ -237,6 +283,29 @@ export default function SettingsScreen() {
                     {renderTransportButton('car', 'Личный\nавтомобиль', '🚗')}
                     {renderTransportButton('walk', 'Пешком', '🚶')}
                 </View>
+            </View>
+
+            {/* Секция ручного ввода времени маршрута */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>🗺️ Время в пути</Text>
+                <Text style={styles.sectionDescription}>
+                    Откройте Яндекс.Карты, посмотрите время маршрута и введите его здесь
+                </Text>
+
+                <View style={styles.inputContainer}>
+                    <TextInput
+                        style={styles.input}
+                        value={customRouteDuration}
+                        onChangeText={setCustomRouteDuration}
+                        placeholder="90"
+                        keyboardType="numeric"
+                        maxLength={3}
+                    />
+                    <Text style={styles.inputLabel}>минут</Text>
+                </View>
+                <Text style={styles.helperText}>
+                    💡 Это время будет использоваться для расчета будильника вместо автоматического
+                </Text>
             </View>
 
             {/* Секция дополнительного времени */}
@@ -495,5 +564,39 @@ const styles = StyleSheet.create({
         color: '#999',
         marginTop: 8,
         fontStyle: 'italic',
+    },
+    // Стили для корпусов
+    campusInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 12,
+        backgroundColor: '#f8f8f8',
+        borderRadius: 12,
+        padding: 12,
+    },
+    campusCode: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#007AFF',
+        width: 40,
+        textAlign: 'center',
+    },
+    campusTextInputContainer: {
+        flex: 1,
+        marginLeft: 10,
+    },
+    campusName: {
+        fontSize: 12,
+        color: '#666',
+        marginBottom: 4,
+    },
+    campusTextInput: {
+        fontSize: 14,
+        color: '#333',
+        padding: 8,
+        backgroundColor: '#fff',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
     },
 });
