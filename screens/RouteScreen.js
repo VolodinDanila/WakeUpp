@@ -1,13 +1,10 @@
 /**
  * Экран маршрута (RouteScreen)
- * 
+ *
  * Отображает:
  * - Маршрут от дома до университета
  * - Время в пути
- * - Информацию о пробках
- * - Рекомендации по времени выезда
- * 
- * TODO: Интеграция с API Яндекс.Карт для построения маршрута
+ * - Ссылку на Яндекс.Карты для просмотра подробного маршрута
  */
 
 import React, { useState, useEffect } from 'react';
@@ -24,7 +21,6 @@ import {
 import { loadSettings, saveRouteData, loadRouteData as loadCachedRoute } from '../utils/storage';
 import {
   buildRoute,
-  getTrafficInfo,
   getMockRouteData,
 } from '../api/routes';
 
@@ -32,8 +28,6 @@ export default function RouteScreen() {
   // Состояния компонента
   const [loading, setLoading] = useState(true);
   const [routeData, setRouteData] = useState(null);
-  const [trafficLevel, setTrafficLevel] = useState('medium'); // low, medium, high
-  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0); // Выбранный вариант маршрута
 
   /**
    * Загрузка данных о маршруте при монтировании компонента
@@ -60,7 +54,6 @@ export default function RouteScreen() {
       const cached = await loadCachedRoute();
       if (cached) {
         setRouteData(cached);
-        setTrafficLevel(cached.trafficInfo?.level || 'medium');
       }
 
       // Строим маршрут
@@ -106,10 +99,6 @@ export default function RouteScreen() {
         routeResult = getMockRouteData();
       }
 
-      // Получаем информацию о пробках
-      const traffic = await getTrafficInfo();
-      routeResult.trafficInfo = traffic;
-
       // Расчет времени выезда и прибытия
       const now = new Date();
       const arrival = new Date(now.getTime() + routeResult.duration * 60000);
@@ -123,7 +112,6 @@ export default function RouteScreen() {
       routeResult.toAddress = settings.universityAddress;
 
       console.log('📊 Итоговые данные маршрута:');
-      console.log('   Тип:', routeResult.isRealRoute ? '✓ Реальный маршрут (API)' : '≈ Расчетный (улучшенный)');
       console.log('   Адреса:', {
         from: routeResult.fromAddress,
         to: routeResult.toAddress
@@ -135,13 +123,11 @@ export default function RouteScreen() {
       });
       console.log('   Расстояние:', routeResult.distance + ' км');
       console.log('   Режим:', routeResult.mode);
-      console.log('   Пробки:', traffic);
       if (routeResult.mapUrl) {
         console.log('   Ссылка на карты:', routeResult.mapUrl);
       }
 
       setRouteData(routeResult);
-      setTrafficLevel(traffic.level);
 
       // Сохраняем в кэш
       await saveRouteData(routeResult);
@@ -169,73 +155,6 @@ export default function RouteScreen() {
     const minutes = String(date.getMinutes()).padStart(2, '0');
     return `${hours}:${minutes}`;
   };
-
-  /**
-   * Получение цвета индикатора пробок
-   */
-  const getTrafficColor = () => {
-    switch (trafficLevel) {
-      case 'low': return '#34C759';    // зеленый
-      case 'medium': return '#FF9500'; // оранжевый
-      case 'high': return '#FF3B30';   // красный
-      default: return '#999';
-    }
-  };
-
-  /**
-   * Получение текста для уровня пробок
-   */
-  const getTrafficText = () => {
-    switch (trafficLevel) {
-      case 'low': return 'Дороги свободны';
-      case 'medium': return 'Средний уровень загруженности';
-      case 'high': return 'Высокий уровень загруженности';
-      default: return 'Нет данных';
-    }
-  };
-
-  /**
-   * Получение иконки для типа транспорта
-   */
-  const getTransportIcon = (type) => {
-    switch (type) {
-      case 'walk': return '🚶';
-      case 'bus': return '🚌';
-      case 'metro': return '🚇';
-      case 'car': return '🚗';
-      default: return '📍';
-    }
-  };
-
-  /**
-   * Рендер шага маршрута
-   */
-  const renderRouteStep = (step, index) => (
-    <View key={step.id} style={styles.stepContainer}>
-      {/* Иконка транспорта */}
-      <View style={styles.stepIconContainer}>
-        <Text style={styles.stepIcon}>{getTransportIcon(step.type)}</Text>
-        {index < routeData.steps.length - 1 && (
-          <View style={styles.stepLine} />
-        )}
-      </View>
-
-      {/* Информация о шаге */}
-      <View style={styles.stepInfo}>
-        <Text style={styles.stepDescription}>{step.description}</Text>
-        <View style={styles.stepDetails}>
-          <Text style={styles.stepDetailText}>
-            {step.duration} мин • {step.distance} км
-          </Text>
-          {step.routeNumber && (
-            <View style={styles.routeBadge}>
-              <Text style={styles.routeBadgeText}>№{step.routeNumber}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </View>
-  );
 
   /**
    * Рендер индикатора загрузки
@@ -294,50 +213,13 @@ export default function RouteScreen() {
         </View>
       )}
 
-      {/* Список вариантов маршрутов */}
-      {routeData.alternatives && routeData.alternatives.length > 1 && (
-        <View style={styles.alternativesCard}>
-          <Text style={styles.alternativesTitle}>Варианты маршрута</Text>
-          {routeData.alternatives.map((alt, index) => (
-            <TouchableOpacity
-              key={alt.id}
-              style={[
-                styles.alternativeItem,
-                selectedRouteIndex === index && styles.alternativeItemActive
-              ]}
-              onPress={() => setSelectedRouteIndex(index)}
-            >
-              <View style={styles.alternativeHeader}>
-                <Text style={[
-                  styles.alternativeType,
-                  selectedRouteIndex === index && styles.alternativeTypeActive
-                ]}>
-                  {alt.routeTypeName}
-                </Text>
-                {selectedRouteIndex === index && (
-                  <Text style={styles.alternativeCheckmark}>✓</Text>
-                )}
-              </View>
-              <View style={styles.alternativeStats}>
-                <Text style={styles.alternativeStat}>
-                  ⏱️ {alt.duration} мин
-                </Text>
-                <Text style={styles.alternativeStat}>
-                  📏 {alt.distance} км
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
       {/* Основная информация о маршруте */}
       <View style={styles.summaryCard}>
         {/* Индикатор типа маршрута */}
         {routeData.isRealRoute && (
           <View style={styles.routeTypeBadge}>
             <Text style={styles.routeTypeBadgeText}>
-              ✓ От Yandex Router API
+              ✓ Реальный маршрут
             </Text>
           </View>
         )}
@@ -354,18 +236,7 @@ export default function RouteScreen() {
 
           <View style={styles.timeBlock}>
             <Text style={styles.timeLabel}>Прибытие</Text>
-            <Text style={styles.timeValue}>
-              {(() => {
-                const selectedRoute = routeData.alternatives?.[selectedRouteIndex];
-                if (!selectedRoute || !routeData.departureTime) return routeData.arrivalTime;
-
-                const [hours, minutes] = routeData.departureTime.split(':').map(Number);
-                const departureDate = new Date();
-                departureDate.setHours(hours, minutes, 0, 0);
-                const arrivalDate = new Date(departureDate.getTime() + selectedRoute.duration * 60000);
-                return `${String(arrivalDate.getHours()).padStart(2, '0')}:${String(arrivalDate.getMinutes()).padStart(2, '0')}`;
-              })()}
-            </Text>
+            <Text style={styles.timeValue}>{routeData.arrivalTime}</Text>
           </View>
         </View>
 
@@ -373,43 +244,16 @@ export default function RouteScreen() {
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Время в пути</Text>
             <Text style={styles.summaryValue}>
-              {routeData.alternatives?.[selectedRouteIndex]?.duration || routeData.duration} мин
+              {routeData.duration} мин
             </Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Расстояние</Text>
             <Text style={styles.summaryValue}>
-              {routeData.alternatives?.[selectedRouteIndex]?.distance || routeData.distance} км
+              {routeData.distance} км
             </Text>
           </View>
-        </View>
-      </View>
-
-      {/* Информация о пробках */}
-      <View style={styles.trafficCard}>
-        <View style={styles.trafficHeader}>
-          <Text style={styles.trafficTitle}>Дорожная ситуация</Text>
-          <View 
-            style={[
-              styles.trafficIndicator, 
-              { backgroundColor: getTrafficColor() }
-            ]} 
-          />
-        </View>
-        <Text style={styles.trafficText}>{getTrafficText()}</Text>
-        {routeData.trafficInfo.additionalTime > 0 && (
-          <Text style={styles.trafficWarning}>
-            ⚠️ Добавьте {routeData.trafficInfo.additionalTime} мин. к времени в пути
-          </Text>
-        )}
-      </View>
-
-      {/* Детальный маршрут */}
-      <View style={styles.routeCard}>
-        <Text style={styles.routeTitle}>Подробный маршрут</Text>
-        <View style={styles.stepsContainer}>
-          {(routeData.alternatives?.[selectedRouteIndex]?.steps || routeData.steps).map((step, index) => renderRouteStep(step, index))}
         </View>
       </View>
 
@@ -437,8 +281,7 @@ export default function RouteScreen() {
       {/* Информационный блок */}
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>
-          ✓ Маршрут получен от Yandex Router API
-          {routeData.alternatives && routeData.alternatives.length > 1 && ` (${routeData.alternatives.length} варианта)`}
+          💡 Откройте маршрут в Яндекс.Картах для просмотра подробной информации, вариантов маршрута и актуального времени в пути с учётом пробок.
         </Text>
       </View>
     </ScrollView>

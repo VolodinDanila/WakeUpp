@@ -160,17 +160,16 @@ const generateYandexMapUrl = (from, to, mode) => {
 
 /**
  * Расчет маршрута через OSRM API (бесплатный)
- * Для общественного транспорта показываем только ссылку на Яндекс.Карты
+ * Для общественного транспорта - примерный расчет
  * @param {Object} from - Координаты начала
  * @param {Object} to - Координаты конца
  * @param {string} mode - Режим транспорта
  * @returns {Promise<Object>} Данные маршрута
  */
 const calculateRoute = async (from, to, mode) => {
-    // Для общественного транспорта OSRM не подходит
+    // Для общественного транспорта OSRM не подходит - делаем примерный расчет
     if (mode === 'transit') {
-        console.log('   ⚠️ Для общественного транспорта используется только ссылка на Яндекс.Карты');
-        // Приблизительный расчет для UI (не точный!)
+        console.log('   ⚠️ Для общественного транспорта - примерный расчет');
         const distance = calculateDistance(from.lat, from.lon, to.lat, to.lon);
         const duration = Math.round(distance / 0.5); // ~30 км/ч средняя скорость
 
@@ -180,22 +179,11 @@ const calculateRoute = async (from, to, mode) => {
             mode: mode,
             departureTime: null,
             arrivalTime: null,
-            steps: generateSimpleSteps(mode, distance.toFixed(1), duration),
-            isRealRoute: false,
-            apiSource: 'Приблизительный расчет (откройте Яндекс.Карты для точного маршрута)',
-            alternatives: [{
-                id: '0',
-                distance: distance.toFixed(1),
-                duration: duration,
-                mode: mode,
-                steps: generateSimpleSteps(mode, distance.toFixed(1), duration),
-                routeType: 'fastest',
-                routeTypeName: 'Откройте в Яндекс.Картах',
-            }],
+            steps: [],
         };
     }
 
-    console.log('   🚀 Запрашиваю маршрут от OSRM API (бесплатный)...');
+    console.log('   🚀 Запрашиваю маршрут от OSRM API...');
     const routeData = await fetchOSRMRoute(from, to, mode);
     console.log(`   ✅ Получен маршрут: ${routeData.duration} мин, ${routeData.distance} км`);
 
@@ -222,7 +210,7 @@ const fetchOSRMRoute = async (from, to, mode) => {
     // OSRM использует формат: lon,lat (не lat,lon!)
     const coordinates = `${from.lon},${from.lat};${to.lon},${to.lat}`;
 
-    // Запрашиваем маршрут без альтернатив (упрощенная версия)
+    // Запрашиваем маршрут (только время и расстояние)
     const url = `${OSRM_URL}/route/v1/${profile}/${coordinates}?overview=false`;
 
     console.log(`   🔗 Запрос к OSRM: ${profile} (${mode})`);
@@ -245,91 +233,15 @@ const fetchOSRMRoute = async (from, to, mode) => {
 
     console.log(`   ✅ Маршрут от OSRM: ${distance} км, ${duration} мин`);
 
-    // Генерируем простые шаги для отображения
-    const steps = generateSimpleSteps(mode, distance, duration);
-
     return {
         distance: distance,
         duration: duration,
         mode: mode,
         departureTime: null,
         arrivalTime: null,
-        steps: steps,
-        isRealRoute: true,
-        apiSource: 'OSRM',
-        alternatives: [{
-            id: '0',
-            distance: distance,
-            duration: duration,
-            mode: mode,
-            steps: steps,
-            routeType: 'fastest',
-            routeTypeName: 'Рекомендуемый маршрут',
-        }],
+        steps: [],
     };
 };
-
-/**
- * Генерация простых шагов маршрута для отображения
- * Используется когда у нас есть только время и расстояние
- * @param {string} mode - Режим транспорта
- * @param {string} distance - Расстояние в км
- * @param {number} duration - Время в минутах
- * @returns {Array} Массив шагов маршрута
- */
-const generateSimpleSteps = (mode, distance, duration) => {
-    if (mode === 'pedestrian') {
-        return [{
-            id: '1',
-            type: 'walk',
-            description: 'Пешком до пункта назначения',
-            duration: duration,
-            distance: distance,
-        }];
-    }
-
-    if (mode === 'auto') {
-        return [{
-            id: '1',
-            type: 'car',
-            description: 'Поездка на автомобиле',
-            duration: duration,
-            distance: distance,
-        }];
-    }
-
-    // Для общественного транспорта создаем составной маршрут
-    const walkTime = Math.round(duration * 0.2);
-    const transitTime = duration - walkTime * 2;
-    const walkDist = (parseFloat(distance) * 0.1).toFixed(1);
-    const transitDist = (parseFloat(distance) * 0.8).toFixed(1);
-
-    return [
-        {
-            id: '1',
-            type: 'walk',
-            description: 'Пешком до остановки',
-            duration: walkTime,
-            distance: walkDist,
-        },
-        {
-            id: '2',
-            type: 'bus',
-            description: 'Общественный транспорт',
-            duration: transitTime,
-            distance: transitDist,
-            routeNumber: null,
-        },
-        {
-            id: '3',
-            type: 'walk',
-            description: 'Пешком до пункта назначения',
-            duration: walkTime,
-            distance: walkDist,
-        },
-    ];
-};
-
 
 /**
  * Расчет расстояния между двумя точками (формула Haversine)
@@ -358,38 +270,6 @@ const toRad = (degrees) => {
 };
 
 
-/**
- * Получение информации о пробках (упрощенная версия)
- * @returns {Promise<Object>} Информация о трафике
- */
-export const getTrafficInfo = async () => {
-    // Для реальной работы нужен Yandex Traffic API
-    // Пока возвращаем случайные данные для демонстрации
-
-    const hour = new Date().getHours();
-
-    // Определяем уровень пробок по времени суток
-    let level = 'low';
-    let additionalTime = 0;
-
-    if (hour >= 7 && hour <= 10 || hour >= 17 && hour <= 20) {
-        // Часы пик
-        level = 'high';
-        additionalTime = 10;
-    } else if (hour >= 11 && hour <= 16) {
-        // Дневное время
-        level = 'medium';
-        additionalTime = 5;
-    }
-
-    return {
-        level: level,
-        description: level === 'low' ? 'Дороги свободны' :
-                     level === 'medium' ? 'Средний уровень загруженности' :
-                     'Высокий уровень загруженности',
-        additionalTime: additionalTime,
-    };
-};
 
 /**
  * Расчет времени выезда на основе времени прибытия
@@ -415,35 +295,7 @@ export const getMockRouteData = () => {
         mode: 'transit',
         departureTime: '08:25',
         arrivalTime: '09:00',
-        steps: [
-            {
-                id: '1',
-                type: 'walk',
-                description: 'Пешком до остановки "Центральная"',
-                duration: 5,
-                distance: 0.4,
-            },
-            {
-                id: '2',
-                type: 'bus',
-                description: 'Автобус №15 до остановки "Университет"',
-                duration: 25,
-                distance: 11.8,
-                routeNumber: '15',
-            },
-            {
-                id: '3',
-                type: 'walk',
-                description: 'Пешком до главного корпуса',
-                duration: 5,
-                distance: 0.3,
-            },
-        ],
-        trafficInfo: {
-            level: 'medium',
-            description: 'Средний уровень загруженности',
-            additionalTime: 5,
-        },
+        steps: [],
     };
 };
 
