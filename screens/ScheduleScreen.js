@@ -20,7 +20,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { loadSettings, saveScheduleCache, loadScheduleCache } from '../utils/storage';
+import { loadSettings, saveScheduleCache, loadScheduleCache, clearScheduleCache } from '../utils/storage';
 import {
   fetchScheduleFromUniversity,
   parseSchedule,
@@ -144,6 +144,21 @@ export default function ScheduleScreen() {
   };
 
   /**
+   * Очистка кеша и принудительное обновление расписания
+   */
+  const refreshSchedule = async () => {
+    if (!groupNumber) {
+      Alert.alert('Ошибка', 'Укажите номер группы в настройках');
+      return;
+    }
+
+    console.log('🗑️ Очистка кеша расписания...');
+    await clearScheduleCache();
+    console.log('🔄 Загрузка свежего расписания...');
+    loadSchedule(groupNumber);
+  };
+
+  /**
    * Рендер одного занятия в списке
    */
   const renderClassItem = ({ item }) => (
@@ -234,11 +249,11 @@ export default function ScheduleScreen() {
       {/* Кнопка обновления расписания */}
       <TouchableOpacity
         style={styles.updateButton}
-        onPress={() => groupNumber && loadSchedule(groupNumber)}
+        onPress={refreshSchedule}
         disabled={!groupNumber}
       >
         <Text style={styles.updateButtonText}>
-          {groupNumber ? 'Обновить расписание' : 'Укажите группу в настройках'}
+          {groupNumber ? '🔄 Обновить расписание' : 'Укажите группу в настройках'}
         </Text>
       </TouchableOpacity>
     </View>

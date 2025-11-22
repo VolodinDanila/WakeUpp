@@ -114,6 +114,20 @@ export const loadRouteData = async () => {
 };
 
 /**
+ * Очистка кеша расписания
+ */
+export const clearScheduleCache = async () => {
+    try {
+        await AsyncStorage.removeItem(KEYS.SCHEDULE);
+        console.log('✅ Кеш расписания очищен');
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка очистки кеша расписания:', error);
+        return false;
+    }
+};
+
+/**
  * Очистка всех данных
  */
 export const clearAllData = async () => {
