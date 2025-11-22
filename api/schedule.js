@@ -7,7 +7,7 @@ const BASE_URL = 'https://rasp.dmami.ru/site/group';
 
 /**
  * Получение расписания группы с сайта университета
- * @param {string} groupNumber - Номер группы (например: "231-324")
+ * @param {string} groupNumber - Номер группы (например: "231-324" или "151-331")
  * @returns {Promise<Object>} Объект с расписанием
  */
 export const fetchScheduleFromUniversity = async (groupNumber) => {
@@ -17,14 +17,12 @@ export const fetchScheduleFromUniversity = async (groupNumber) => {
 
     const url = `${BASE_URL}?group=${groupNumber}&session=0`;
 
-    console.log(`📅 Запрашиваю расписание группы ${groupNumber}...`);
-
     try {
-        // Первый запрос для получения cookie
+        // Первый запрос - получаем cookie
         const firstResponse = await fetch(url, {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0',
                 'Referer': `https://rasp.dmami.ru/?${groupNumber}`,
             },
         });
@@ -36,30 +34,32 @@ export const fetchScheduleFromUniversity = async (groupNumber) => {
             cookieValue = cookies.split(';')[0];
         }
 
-        // Проверяем, может уже получили JSON
-        const firstData = await firstResponse.json().catch(() => null);
-        if (firstData && typeof firstData === 'object') {
-            console.log('✅ Расписание получено (первый запрос)');
-            return firstData;
+        // Пытаемся распарсить первый ответ
+        const firstText = await firstResponse.text();
+        try {
+            const firstData = JSON.parse(firstText);
+            if (firstData && typeof firstData === 'object') {
+                return firstData;
+            }
+        } catch {
+            // Не JSON, продолжаем со вторым запросом
         }
 
         // Второй запрос с cookie
         const secondResponse = await fetch(url, {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0',
                 'Referer': url,
                 'Cookie': cookieValue,
             },
         });
 
         const scheduleData = await secondResponse.json();
-        console.log('✅ Расписание получено (второй запрос)');
-
         return scheduleData;
 
     } catch (error) {
-        console.error('❌ Ошибка получения расписания:', error);
+        console.error('Ошибка получения расписания:', error);
         throw new Error('Не удалось загрузить расписание. Проверьте номер группы и интернет-соединение.');
     }
 };

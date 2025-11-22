@@ -18,7 +18,15 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { loadSettings, saveRouteData, loadRouteData as loadCachedRoute } from '../utils/storage';
+import {
+  buildRoute,
+  getTrafficInfo,
+  getMockRouteData,
+  isRoutesApiConfigured,
+} from '../api/routes';
 
 export default function RouteScreen() {
   // Состояния компонента
@@ -30,63 +38,111 @@ export default function RouteScreen() {
    * Загрузка данных о маршруте при монтировании компонента
    */
   useEffect(() => {
-    loadRouteData();
+    initializeRoute();
   }, []);
 
   /**
-   * Функция загрузки данных о маршруте
-   * TODO: Реализовать запрос к API Яндекс.Карт
+   * Инициализация маршрута
    */
-  const loadRouteData = async () => {
+  const initializeRoute = async () => {
     setLoading(true);
     try {
-      // Симуляция загрузки данных
-      setTimeout(() => {
-        // Тестовые данные маршрута
-        const mockRouteData = {
-          distance: 12.5, // км
-          duration: 35,   // минуты
-          departureTime: '08:25',
-          arrivalTime: '09:00',
-          steps: [
-            {
-              id: '1',
-              type: 'walk',
-              description: 'Пешком до остановки "Центральная"',
-              duration: 5,
-              distance: 0.4,
-            },
-            {
-              id: '2',
-              type: 'bus',
-              description: 'Автобус №15 до остановки "Университет"',
-              duration: 25,
-              distance: 11.8,
-              routeNumber: '15',
-            },
-            {
-              id: '3',
-              type: 'walk',
-              description: 'Пешком до главного корпуса',
-              duration: 5,
-              distance: 0.3,
-            },
-          ],
-          trafficInfo: {
-            level: 'medium',
-            description: 'Средний уровень загруженности',
-            additionalTime: 5, // дополнительное время из-за пробок
-          },
-        };
-        
-        setRouteData(mockRouteData);
-        setTrafficLevel(mockRouteData.trafficInfo.level);
+      // Загружаем настройки
+      const settings = await loadSettings();
+
+      if (!settings || !settings.homeAddress || !settings.universityAddress) {
         setLoading(false);
-      }, 800);
+        return;
+      }
+
+      // Пробуем загрузить кэшированный маршрут
+      const cached = await loadCachedRoute();
+      if (cached) {
+        setRouteData(cached);
+        setTrafficLevel(cached.trafficInfo?.level || 'medium');
+      }
+
+      // Строим маршрут
+      await loadRouteData(settings);
+
+    } catch (error) {
+      console.error('Ошибка инициализации маршрута:', error);
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Функция загрузки данных о маршруте
+   */
+  const loadRouteData = async (settingsData) => {
+    setLoading(true);
+    try {
+      const settings = settingsData || await loadSettings();
+
+      if (!settings || !settings.homeAddress || !settings.universityAddress) {
+        setRouteData(null);
+        setLoading(false);
+        return;
+      }
+
+      let routeResult;
+
+      // Проверяем, настроен ли API
+      if (isRoutesApiConfigured()) {
+        // Строим реальный маршрут
+        const mode = settings.transportType === 'car' ? 'auto' :
+                     settings.transportType === 'walk' ? 'pedestrian' : 'transit';
+
+        routeResult = await buildRoute(
+          settings.homeAddress,
+          settings.universityAddress,
+          mode
+        );
+      } else {
+        // Используем mock данные
+        routeResult = getMockRouteData();
+      }
+
+      // Получаем информацию о пробках
+      const traffic = await getTrafficInfo();
+      routeResult.trafficInfo = traffic;
+
+      // Расчет времени выезда и прибытия
+      const now = new Date();
+      const arrival = new Date(now.getTime() + routeResult.duration * 60000);
+      const departure = now;
+
+      routeResult.departureTime = formatTime(departure);
+      routeResult.arrivalTime = formatTime(arrival);
+
+      setRouteData(routeResult);
+      setTrafficLevel(traffic.level);
+
+      // Сохраняем в кэш
+      await saveRouteData(routeResult);
+
+      setLoading(false);
     } catch (error) {
       console.error('Ошибка загрузки маршрута:', error);
       setLoading(false);
+      Alert.alert(
+        'Ошибка',
+        'Не удалось построить маршрут. Проверьте адреса в настройках.',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Повторить', onPress: () => loadRouteData() }
+        ]
+      );
     }
+  };
+
+  /**
+   * Форматирование времени
+   */
+  const formatTime = (date) => {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
   };
 
   /**
@@ -248,9 +304,9 @@ export default function RouteScreen() {
       </View>
 
       {/* Кнопка обновления маршрута */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.updateButton}
-        onPress={loadRouteData}
+        onPress={() => loadRouteData()}
       >
         <Text style={styles.updateButtonText}>Обновить маршрут</Text>
       </TouchableOpacity>
