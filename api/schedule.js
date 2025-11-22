@@ -97,11 +97,36 @@ export const fetchScheduleFromUniversity = async (groupNumber) => {
     }
 };
 
+// Стандартное расписание звонков для университета
+const LESSON_TIMES = {
+    1: '09:00-10:30',
+    2: '10:40-12:10',
+    3: '12:20-13:50',
+    4: '14:00-15:30',
+    5: '15:40-17:10',
+    6: '17:20-18:50',
+    7: '19:00-20:30',
+};
+
 /**
  * Парсинг расписания в удобный формат для приложения
  * Преобразует данные с сайта в структуру, понятную нашему приложению
+ *
+ * Структура данных с rasp.dmami.ru:
+ * {
+ *   "grid": {
+ *     "1": {              // день недели (1=понедельник, 2=вторник и т.д.)
+ *       "1": [{...}],     // номер пары (1=первая пара 09:00-10:30)
+ *       "2": [{...}],     // 2=вторая пара 10:40-12:10
+ *       ...
+ *     },
+ *     "2": {...},
+ *     ...
+ *   }
+ * }
+ *
  * @param {Object} rawSchedule - Сырые данные с сайта
- * @returns {Array} Массив с расписанием по дням
+ * @returns {Object} Объект с расписанием по дням
  */
 export const parseSchedule = (rawSchedule) => {
     if (!rawSchedule || !rawSchedule.grid) {
@@ -111,56 +136,72 @@ export const parseSchedule = (rawSchedule) => {
 
     const parsedSchedule = {};
 
-    console.log('🔍 Структура данных grid:', Object.keys(rawSchedule.grid));
+    console.log('🔍 Дни в расписании:', Object.keys(rawSchedule.grid));
 
     // Проходим по всем дням в расписании
     Object.keys(rawSchedule.grid).forEach(dayKey => {
-        const dayData = rawSchedule.grid[dayKey];
+        const dayData = rawSchedule.grid[dayKey]; // Объект с парами: {"1": [...], "2": [...], ...}
 
-        // Проверяем что dayData существует
-        if (!dayData) {
+        if (!dayData || typeof dayData !== 'object') {
             parsedSchedule[dayKey] = [];
             return;
         }
 
-        // Если это не массив, а строка или другой тип - пропускаем
-        if (typeof dayData === 'string' || !dayData) {
-            console.log(`⚠️ День ${dayKey}: неожиданный тип данных -`, typeof dayData);
-            parsedSchedule[dayKey] = [];
-            return;
-        }
+        const allLessonsForDay = [];
 
-        // Если это пустой массив или объект
-        if (Array.isArray(dayData) && dayData.length === 0) {
-            parsedSchedule[dayKey] = [];
-            return;
-        }
+        // Проходим по всем парам в этом дне
+        Object.keys(dayData).forEach(lessonNumber => {
+            const lessonsInSlot = dayData[lessonNumber]; // Массив занятий в этой паре
 
-        // Если это не массив, возможно это объект с занятиями
-        const lessonsArray = Array.isArray(dayData) ? dayData : Object.values(dayData);
+            // Проверяем что это массив с занятиями
+            if (!Array.isArray(lessonsInSlot) || lessonsInSlot.length === 0) {
+                return; // Пропускаем пустые слоты
+            }
 
-        // Парсим занятия для этого дня
-        parsedSchedule[dayKey] = lessonsArray
-            .filter(lesson => lesson && typeof lesson === 'object') // Фильтруем невалидные данные
-            .map((lesson, index) => {
-                // Извлекаем информацию о занятии
-                const subject = lesson.sbj || lesson.subject || 'Неизвестный предмет';
-                const type = lesson.type || 'Занятие';
-                const teacher = lesson.teacher || lesson.prepod || 'Преподаватель не указан';
-                const room = lesson.aud || lesson.auditoria || 'Аудитория не указана';
-                const time = lesson.time || lesson.time_start || '';
+            // Обрабатываем каждое занятие в этом слоте
+            lessonsInSlot.forEach((lesson, slotIndex) => {
+                if (!lesson || typeof lesson !== 'object') {
+                    return; // Пропускаем невалидные данные
+                }
 
-                return {
-                    id: `${dayKey}-${index}`,
+                // Извлекаем аудиторию из массива auditories или shortRooms
+                let room = 'Аудитория не указана';
+                if (lesson.shortRooms && lesson.shortRooms.length > 0) {
+                    room = lesson.shortRooms[0];
+                } else if (lesson.auditories && lesson.auditories.length > 0) {
+                    const auditory = lesson.auditories[0];
+                    // Убираем HTML теги из названия аудитории
+                    room = auditory.title ? auditory.title.replace(/<[^>]*>/g, '') : 'Аудитория не указана';
+                }
+
+                // Получаем время по номеру пары
+                const time = LESSON_TIMES[lessonNumber] || '';
+
+                // Извлекаем преподавателя (может быть пустой строкой)
+                const teacher = lesson.teacher && lesson.teacher.trim() !== ''
+                    ? lesson.teacher
+                    : 'Преподаватель не указан';
+
+                const parsedLesson = {
+                    id: `${dayKey}-${lessonNumber}-${slotIndex}`,
                     time: time,
-                    subject: subject,
-                    type: type,
+                    subject: lesson.sbj || 'Неизвестный предмет',
+                    type: lesson.type || 'Занятие',
                     room: room,
                     professor: teacher,
+                    lessonNumber: parseInt(lessonNumber, 10), // Для сортировки
                 };
-            });
 
-        console.log(`✅ День ${dayKey}: ${parsedSchedule[dayKey].length} занятий`);
+                allLessonsForDay.push(parsedLesson);
+            });
+        });
+
+        // Сортируем занятия по номеру пары
+        allLessonsForDay.sort((a, b) => a.lessonNumber - b.lessonNumber);
+
+        parsedSchedule[dayKey] = allLessonsForDay;
+
+        console.log(`✅ День ${dayKey}: ${allLessonsForDay.length} занятий`);
     });
 
     return parsedSchedule;
